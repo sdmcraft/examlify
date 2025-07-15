@@ -120,23 +120,6 @@ paths:
       summary: List available tests
       description: Get list of all tests available to the current user
       parameters:
-        - name: page
-          in: query
-          description: Page number for pagination
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: limit
-          in: query
-          description: Number of items per page
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
         - name: status
           in: query
           description: Filter by test status
@@ -150,14 +133,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  tests:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/TestSummary'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
+                type: array
+                items:
+                  $ref: '#/components/schemas/TestSummary'
 
   /api/tests/upload:
     post:
@@ -341,88 +319,8 @@ paths:
                     format: date-time
 
   # Test Session APIs
-  /api/sessions/{session_id}:
-    get:
-      tags:
-        - Test Sessions
-      summary: Get session status
-      description: Get current test session status and progress
-      parameters:
-        - name: session_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Session status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TestSession'
 
-  /api/sessions/{session_id}/answers:
-    get:
-      tags:
-        - Test Sessions
-      summary: Get saved answers
-      description: Retrieve all saved answers for the current session
-      parameters:
-        - name: session_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Saved answers
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  answers:
-                    type: object
-                    additionalProperties:
-                      type: string
 
-    post:
-      tags:
-        - Test Sessions
-      summary: Save answer
-      description: Save or update an answer for a specific question
-      parameters:
-        - name: session_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - question_id
-                - answer
-              properties:
-                question_id:
-                  type: string
-                  format: uuid
-                answer:
-                  type: string
-                  description: Selected answer option ID
-      responses:
-        '200':
-          description: Answer saved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
 
   /api/sessions/{session_id}/hint/{question_id}:
     post:
@@ -495,7 +393,7 @@ paths:
       tags:
         - Test Sessions
       summary: Submit test
-      description: Submit completed test and calculate results
+      description: Submit completed test with all answers and calculate results
       parameters:
         - name: test_id
           in: path
@@ -511,13 +409,14 @@ paths:
               type: object
               required:
                 - session_id
+                - answers
               properties:
                 session_id:
                   type: string
                   format: uuid
                 answers:
                   type: object
-                  description: Final answers to submit
+                  description: All answers for the test (question_id -> answer_option_id mapping)
                   additionalProperties:
                     type: string
       responses:
@@ -567,38 +466,15 @@ paths:
         - Results
       summary: Get test history
       description: Get user's test attempt history
-      parameters:
-        - name: page
-          in: query
-          description: Page number for pagination
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: limit
-          in: query
-          description: Number of items per page
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
       responses:
         '200':
           description: Test history
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  attempts:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/TestAttemptSummary'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
+                type: array
+                items:
+                  $ref: '#/components/schemas/TestAttemptSummary'
 
   /api/results/summary:
     get:
@@ -614,48 +490,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/PerformanceSummary'
 
-  /api/results/{attempt_id}/export/pdf:
-    get:
-      tags:
-        - Results
-      summary: Export results as PDF
-      description: Generate and download test results as PDF
-      parameters:
-        - name: attempt_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: PDF file
-          content:
-            application/pdf:
-              schema:
-                type: string
-                format: binary
 
-  /api/results/{attempt_id}/export/csv:
-    get:
-      tags:
-        - Results
-      summary: Export results as CSV
-      description: Generate and download test results as CSV
-      parameters:
-        - name: attempt_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: CSV file
-          content:
-            text/csv:
-              schema:
-                type: string
 
   # User Management APIs
   /api/users/profile:
@@ -741,37 +576,15 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: page
-          in: query
-          description: Page number for pagination
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: limit
-          in: query
-          description: Number of items per page
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
       responses:
         '200':
           description: User test history
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  attempts:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/TestAttemptSummary'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
+                type: array
+                items:
+                  $ref: '#/components/schemas/TestAttemptSummary'
 
   # Admin APIs
   /api/admin/users:
@@ -781,23 +594,6 @@ paths:
       summary: List all users
       description: Get list of all users in the system (admin only)
       parameters:
-        - name: page
-          in: query
-          description: Page number for pagination
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: limit
-          in: query
-          description: Number of items per page
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
         - name: role
           in: query
           description: Filter by user role
@@ -811,14 +607,9 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  users:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/User'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
 
     post:
       tags:
@@ -923,47 +714,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
 
-  /api/admin/analytics:
-    get:
-      tags:
-        - Admin
-      summary: System analytics
-      description: Get overall system usage analytics (admin only)
-      responses:
-        '200':
-          description: System analytics
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SystemAnalytics'
 
-  /api/admin/analytics/users:
-    get:
-      tags:
-        - Admin
-      summary: User activity analytics
-      description: Get detailed user activity statistics (admin only)
-      responses:
-        '200':
-          description: User activity analytics
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/UserAnalytics'
-
-  /api/admin/analytics/tests:
-    get:
-      tags:
-        - Admin
-      summary: Test completion analytics
-      description: Get test completion and performance statistics (admin only)
-      responses:
-        '200':
-          description: Test analytics
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TestAnalytics'
 
   # PDF Processing APIs
   /api/pdf/process:
@@ -1093,12 +844,12 @@ paths:
                 $ref: '#/components/schemas/SuccessResponse'
 
   # System Health APIs
-  /api/health/status:
+  /api/health:
     get:
       tags:
         - Health
       summary: System health check
-      description: Check overall system health
+      description: Check health status of all system components
       security: []
       responses:
         '200':
@@ -1111,53 +862,31 @@ paths:
                   status:
                     type: string
                     enum: [healthy, degraded, unhealthy]
+                    description: Overall system health status
                   timestamp:
                     type: string
                     format: date-time
                   version:
                     type: string
-
-  /api/health/database:
-    get:
-      tags:
-        - Health
-      summary: Database connectivity check
-      description: Check database connection status
-      security: []
-      responses:
-        '200':
-          description: Database health status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [connected, disconnected]
-                  response_time_ms:
-                    type: number
-
-  /api/health/llm:
-    get:
-      tags:
-        - Health
-      summary: LLM service connectivity check
-      description: Check LLM service connection status
-      security: []
-      responses:
-        '200':
-          description: LLM service health status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [connected, disconnected]
-                  response_time_ms:
-                    type: number
+                  components:
+                    type: object
+                    properties:
+                      database:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [connected, disconnected]
+                          response_time_ms:
+                            type: number
+                      llm:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum: [connected, disconnected]
+                          response_time_ms:
+                            type: number
 
   # Configuration APIs
   /api/config/settings:
@@ -1193,94 +922,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemSettings'
 
-  # Notification APIs
-  /api/notifications:
-    get:
-      tags:
-        - Notifications
-      summary: Get user notifications
-      description: Get notifications for the current user
-      parameters:
-        - name: page
-          in: query
-          description: Page number for pagination
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            default: 1
-        - name: limit
-          in: query
-          description: Number of items per page
-          required: false
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: unread_only
-          in: query
-          description: Filter unread notifications only
-          required: false
-          schema:
-            type: boolean
-            default: false
-      responses:
-        '200':
-          description: User notifications
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  notifications:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Notification'
-                  pagination:
-                    $ref: '#/components/schemas/Pagination'
 
-  /api/notifications/{notification_id}/read:
-    put:
-      tags:
-        - Notifications
-      summary: Mark notification as read
-      description: Mark a specific notification as read
-      parameters:
-        - name: notification_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Notification marked as read
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
-
-  /api/notifications/{notification_id}:
-    delete:
-      tags:
-        - Notifications
-      summary: Delete notification
-      description: Delete a specific notification
-      parameters:
-        - name: notification_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Notification deleted
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
 
 components:
   securitySchemes:
@@ -1578,86 +1220,7 @@ components:
               average_percentage:
                 type: number
 
-    # Analytics
-    SystemAnalytics:
-      type: object
-      properties:
-        total_users:
-          type: integer
-        active_users_today:
-          type: integer
-        total_tests:
-          type: integer
-        total_attempts:
-          type: integer
-        average_completion_rate:
-          type: number
-        system_uptime:
-          type: number
 
-    UserAnalytics:
-      type: object
-      properties:
-        user_registrations:
-          type: array
-          items:
-            type: object
-            properties:
-              date:
-                type: string
-                format: date
-              count:
-                type: integer
-        active_users:
-          type: array
-          items:
-            type: object
-            properties:
-              date:
-                type: string
-                format: date
-              count:
-                type: integer
-        user_activity:
-          type: object
-          additionalProperties:
-            type: integer
-
-    TestAnalytics:
-      type: object
-      properties:
-        test_completions:
-          type: array
-          items:
-            type: object
-            properties:
-              date:
-                type: string
-                format: date
-              count:
-                type: integer
-        average_scores:
-          type: array
-          items:
-            type: object
-            properties:
-              date:
-                type: string
-                format: date
-              average_percentage:
-                type: number
-        popular_tests:
-          type: array
-          items:
-            type: object
-            properties:
-              test_id:
-                type: string
-                format: uuid
-              test_title:
-                type: string
-              attempt_count:
-                type: integer
 
     # System Settings
     SystemSettings:
@@ -1685,28 +1248,7 @@ components:
           type: integer
           description: Default test duration in minutes
 
-    # Notifications
-    Notification:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        user_id:
-          type: string
-          format: uuid
-        title:
-          type: string
-        message:
-          type: string
-        type:
-          type: string
-          enum: [info, warning, error, success]
-        read:
-          type: boolean
-        created_at:
-          type: string
-          format: date-time
+
 
     # Common
     SuccessResponse:
@@ -1738,21 +1280,7 @@ components:
           type: string
           format: uuid
 
-    Pagination:
-      type: object
-      properties:
-        page:
-          type: integer
-        limit:
-          type: integer
-        total:
-          type: integer
-        pages:
-          type: integer
-        has_next:
-          type: boolean
-        has_prev:
-          type: boolean
+
 
 tags:
   - name: Authentication
@@ -1773,5 +1301,3 @@ tags:
     description: System health and monitoring
   - name: Configuration
     description: System configuration management
-  - name: Notifications
-    description: User notification management
