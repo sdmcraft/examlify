@@ -1,0 +1,1777 @@
+openapi: 3.0.3
+info:
+  title: examlify API
+  description: |
+    Intelligent Test Management System API
+
+    A web-based test management system that enables automated question extraction from PDF documents using LLM technology, provides an interactive web interface for test-taking, and includes comprehensive scoring and analytics capabilities.
+
+    ## Features
+    - PDF-based question paper upload and processing
+    - LLM-powered question extraction and structuring
+    - Interactive web-based test interface
+    - Intelligent hint and solution system
+    - Timer-based test management
+    - Automated scoring and analytics
+    - Multi-user authentication and administration
+    - Comprehensive reporting and test history
+  version: 1.0.0
+  contact:
+    name: examlify Support
+    email: support@examlify.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.examlify.com
+    description: Production server
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Authentication APIs
+  /api/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user with username and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  description: Username or email
+                  example: "john.doe@example.com"
+                password:
+                  type: string
+                  description: User password
+                  example: "securepassword123"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Logout user and invalidate session
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/auth/status:
+    get:
+      tags:
+        - Authentication
+      summary: Check authentication status
+      description: Verify if current session is valid
+      responses:
+        '200':
+          description: Authentication status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Test Management APIs
+  /api/tests:
+    get:
+      tags:
+        - Tests
+      summary: List available tests
+      description: Get list of all tests available to the current user
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          description: Filter by test status
+          required: false
+          schema:
+            type: string
+            enum: [active, inactive, draft]
+      responses:
+        '200':
+          description: List of tests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /api/tests/upload:
+    post:
+      tags:
+        - Tests
+      summary: Upload and process PDF
+      description: Upload a PDF file and extract questions using LLM
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - pdf_file
+                - title
+              properties:
+                pdf_file:
+                  type: string
+                  format: binary
+                  description: PDF file to upload
+                title:
+                  type: string
+                  description: Test title
+                  example: "Mathematics Midterm Exam"
+                description:
+                  type: string
+                  description: Test description
+                  example: "Covers algebra and calculus topics"
+                duration_minutes:
+                  type: integer
+                  description: Test duration in minutes (optional)
+                  example: 120
+      responses:
+        '200':
+          description: PDF processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [processing, completed, failed]
+                  message:
+                    type: string
+        '400':
+          description: Invalid file or request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/tests/{test_id}:
+    get:
+      tags:
+        - Tests
+      summary: Get test details
+      description: Retrieve detailed information about a specific test
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Test details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+        '404':
+          description: Test not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Tests
+      summary: Update test
+      description: Update test metadata (admin only)
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                duration_minutes:
+                  type: integer
+                status:
+                  type: string
+                  enum: [active, inactive, draft]
+      responses:
+        '200':
+          description: Test updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+
+    delete:
+      tags:
+        - Tests
+      summary: Delete test
+      description: Delete a test (admin only)
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Test deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/tests/{test_id}/start:
+    post:
+      tags:
+        - Test Sessions
+      summary: Start test session
+      description: Initialize a new test attempt session
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration_minutes:
+                  type: integer
+                  description: Override test duration (optional)
+      responses:
+        '200':
+          description: Test session started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                    format: uuid
+                  test:
+                    $ref: '#/components/schemas/Test'
+                  started_at:
+                    type: string
+                    format: date-time
+                  expires_at:
+                    type: string
+                    format: date-time
+
+  # Test Session APIs
+  /api/sessions/{session_id}:
+    get:
+      tags:
+        - Test Sessions
+      summary: Get session status
+      description: Get current test session status and progress
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestSession'
+
+  /api/sessions/{session_id}/answers:
+    get:
+      tags:
+        - Test Sessions
+      summary: Get saved answers
+      description: Retrieve all saved answers for the current session
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Saved answers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answers:
+                    type: object
+                    additionalProperties:
+                      type: string
+
+    post:
+      tags:
+        - Test Sessions
+      summary: Save answer
+      description: Save or update an answer for a specific question
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - question_id
+                - answer
+              properties:
+                question_id:
+                  type: string
+                  format: uuid
+                answer:
+                  type: string
+                  description: Selected answer option ID
+      responses:
+        '200':
+          description: Answer saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/sessions/{session_id}/hint/{question_id}:
+    post:
+      tags:
+        - Test Sessions
+      summary: Request hint
+      description: Get hint for a specific question
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: question_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Hint provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hint:
+                    type: string
+                  used_hint:
+                    type: boolean
+
+  /api/sessions/{session_id}/solution/{question_id}:
+    post:
+      tags:
+        - Test Sessions
+      summary: Request solution
+      description: Get detailed solution for a specific question
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: question_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Solution provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  correct_answer:
+                    type: string
+                  detailed_solution:
+                    type: string
+                  used_solution:
+                    type: boolean
+
+  /api/tests/{test_id}/submit:
+    post:
+      tags:
+        - Test Sessions
+      summary: Submit test
+      description: Submit completed test and calculate results
+      parameters:
+        - name: test_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_id
+              properties:
+                session_id:
+                  type: string
+                  format: uuid
+                answers:
+                  type: object
+                  description: Final answers to submit
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Test submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attempt_id:
+                    type: string
+                    format: uuid
+                  score:
+                    type: number
+                  percentage:
+                    type: number
+                  completed_at:
+                    type: string
+                    format: date-time
+
+  # Results APIs
+  /api/results/{attempt_id}:
+    get:
+      tags:
+        - Results
+      summary: Get detailed results
+      description: Get comprehensive test results and analysis
+      parameters:
+        - name: attempt_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detailed test results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestResult'
+
+  /api/results/history:
+    get:
+      tags:
+        - Results
+      summary: Get test history
+      description: Get user's test attempt history
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Test history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attempts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestAttemptSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /api/results/summary:
+    get:
+      tags:
+        - Results
+      summary: Get performance summary
+      description: Get overall performance analytics and trends
+      responses:
+        '200':
+          description: Performance summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceSummary'
+
+  /api/results/{attempt_id}/export/pdf:
+    get:
+      tags:
+        - Results
+      summary: Export results as PDF
+      description: Generate and download test results as PDF
+      parameters:
+        - name: attempt_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /api/results/{attempt_id}/export/csv:
+    get:
+      tags:
+        - Results
+      summary: Export results as CSV
+      description: Generate and download test results as CSV
+      parameters:
+        - name: attempt_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # User Management APIs
+  /api/users/profile:
+    get:
+      tags:
+        - Users
+      summary: Get user profile
+      description: Get current user's profile information
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    put:
+      tags:
+        - Users
+      summary: Update user profile
+      description: Update current user's profile information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/users/password:
+    put:
+      tags:
+        - Users
+      summary: Change password
+      description: Change current user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - current_password
+                - new_password
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/users/{user_id}/history:
+    get:
+      tags:
+        - Users
+      summary: Get user test history
+      description: Get test history for a specific user (admin only)
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: User test history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attempts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestAttemptSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  # Admin APIs
+  /api/admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List all users
+      description: Get list of all users in the system (admin only)
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: role
+          in: query
+          description: Filter by user role
+          required: false
+          schema:
+            type: string
+            enum: [admin, user]
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags:
+        - Admin
+      summary: Create new user
+      description: Create a new user account (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+                - role
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, user]
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/admin/users/{user_id}:
+    put:
+      tags:
+        - Admin
+      summary: Update user
+      description: Update user information (admin only)
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                role:
+                  type: string
+                  enum: [admin, user]
+                status:
+                  type: string
+                  enum: [active, inactive]
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+    delete:
+      tags:
+        - Admin
+      summary: Delete user
+      description: Delete a user account (admin only)
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/admin/analytics:
+    get:
+      tags:
+        - Admin
+      summary: System analytics
+      description: Get overall system usage analytics (admin only)
+      responses:
+        '200':
+          description: System analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemAnalytics'
+
+  /api/admin/analytics/users:
+    get:
+      tags:
+        - Admin
+      summary: User activity analytics
+      description: Get detailed user activity statistics (admin only)
+      responses:
+        '200':
+          description: User activity analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAnalytics'
+
+  /api/admin/analytics/tests:
+    get:
+      tags:
+        - Admin
+      summary: Test completion analytics
+      description: Get test completion and performance statistics (admin only)
+      responses:
+        '200':
+          description: Test analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestAnalytics'
+
+  # PDF Processing APIs
+  /api/pdf/process:
+    post:
+      tags:
+        - PDF Processing
+      summary: Process PDF with LLM
+      description: Process a PDF file and extract questions using LLM
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - pdf_file
+              properties:
+                pdf_file:
+                  type: string
+                  format: binary
+                  description: PDF file to process
+      responses:
+        '200':
+          description: PDF processing initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pdf_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [processing, completed, failed]
+                  message:
+                    type: string
+
+  /api/pdf/{pdf_id}/status:
+    get:
+      tags:
+        - PDF Processing
+      summary: Check processing status
+      description: Check the status of PDF processing
+      parameters:
+        - name: pdf_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Processing status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [processing, completed, failed]
+                  progress:
+                    type: number
+                    minimum: 0
+                    maximum: 100
+                  message:
+                    type: string
+
+  /api/pdf/{pdf_id}/questions:
+    get:
+      tags:
+        - PDF Processing
+      summary: Get extracted questions
+      description: Get questions extracted from processed PDF
+      parameters:
+        - name: pdf_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Extracted questions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  questions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Question'
+
+    put:
+      tags:
+        - PDF Processing
+      summary: Update extracted questions
+      description: Update or correct extracted questions
+      parameters:
+        - name: pdf_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - questions
+              properties:
+                questions:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Question'
+      responses:
+        '200':
+          description: Questions updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  # System Health APIs
+  /api/health/status:
+    get:
+      tags:
+        - Health
+      summary: System health check
+      description: Check overall system health
+      security: []
+      responses:
+        '200':
+          description: System health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  version:
+                    type: string
+
+  /api/health/database:
+    get:
+      tags:
+        - Health
+      summary: Database connectivity check
+      description: Check database connection status
+      security: []
+      responses:
+        '200':
+          description: Database health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [connected, disconnected]
+                  response_time_ms:
+                    type: number
+
+  /api/health/llm:
+    get:
+      tags:
+        - Health
+      summary: LLM service connectivity check
+      description: Check LLM service connection status
+      security: []
+      responses:
+        '200':
+          description: LLM service health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [connected, disconnected]
+                  response_time_ms:
+                    type: number
+
+  # Configuration APIs
+  /api/config/settings:
+    get:
+      tags:
+        - Configuration
+      summary: Get system settings
+      description: Get current system configuration settings
+      responses:
+        '200':
+          description: System settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettings'
+
+    put:
+      tags:
+        - Configuration
+      summary: Update system settings
+      description: Update system configuration settings (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SystemSettings'
+      responses:
+        '200':
+          description: Settings updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettings'
+
+  # Notification APIs
+  /api/notifications:
+    get:
+      tags:
+        - Notifications
+      summary: Get user notifications
+      description: Get notifications for the current user
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: unread_only
+          in: query
+          description: Filter unread notifications only
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: User notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /api/notifications/{notification_id}/read:
+    put:
+      tags:
+        - Notifications
+      summary: Mark notification as read
+      description: Mark a specific notification as read
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /api/notifications/{notification_id}:
+    delete:
+      tags:
+        - Notifications
+      summary: Delete notification
+      description: Delete a specific notification
+      parameters:
+        - name: notification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Notification deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # Authentication
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: "bearer"
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        user:
+          $ref: '#/components/schemas/User'
+
+    # User
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+        status:
+          type: string
+          enum: [active, inactive]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # Test
+    Test:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        duration_minutes:
+          type: integer
+        total_questions:
+          type: integer
+        total_marks:
+          type: number
+        status:
+          type: string
+          enum: [active, inactive, draft]
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+
+    TestSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        duration_minutes:
+          type: integer
+        total_questions:
+          type: integer
+        total_marks:
+          type: number
+        status:
+          type: string
+          enum: [active, inactive, draft]
+        created_at:
+          type: string
+          format: date-time
+
+    # Question
+    Question:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        question_text:
+          type: string
+        question_type:
+          type: string
+          enum: [multiple_choice]
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionOption'
+        correct_answer:
+          type: string
+        hint:
+          type: string
+        detailed_solution:
+          type: string
+        subject:
+          type: string
+        topic:
+          type: string
+        marks:
+          type: number
+          default: 4
+        negative_marks:
+          type: number
+          default: -1
+
+    QuestionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        option_text:
+          type: string
+
+    # Test Session
+    TestSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        test_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, completed, expired]
+        current_question:
+          type: integer
+        answered_questions:
+          type: integer
+        total_questions:
+          type: integer
+
+    # Test Results
+    TestResult:
+      type: object
+      properties:
+        attempt_id:
+          type: string
+          format: uuid
+        test_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        total_score:
+          type: number
+        total_marks:
+          type: number
+        percentage:
+          type: number
+        question_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionResult'
+        subject_breakdown:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              score:
+                type: number
+              total_marks:
+                type: number
+              percentage:
+                type: number
+
+    QuestionResult:
+      type: object
+      properties:
+        question_id:
+          type: string
+          format: uuid
+        user_answer:
+          type: string
+        correct_answer:
+          type: string
+        is_correct:
+          type: boolean
+        marks_obtained:
+          type: number
+        used_hint:
+          type: boolean
+        used_solution:
+          type: boolean
+
+    TestAttemptSummary:
+      type: object
+      properties:
+        attempt_id:
+          type: string
+          format: uuid
+        test_title:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        total_score:
+          type: number
+        total_marks:
+          type: number
+        percentage:
+          type: number
+
+    # Performance Summary
+    PerformanceSummary:
+      type: object
+      properties:
+        total_tests:
+          type: integer
+        average_score:
+          type: number
+        average_percentage:
+          type: number
+        best_score:
+          type: number
+        worst_score:
+          type: number
+        subject_performance:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              tests_attempted:
+                type: integer
+              average_score:
+                type: number
+              average_percentage:
+                type: number
+        recent_trends:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              average_percentage:
+                type: number
+
+    # Analytics
+    SystemAnalytics:
+      type: object
+      properties:
+        total_users:
+          type: integer
+        active_users_today:
+          type: integer
+        total_tests:
+          type: integer
+        total_attempts:
+          type: integer
+        average_completion_rate:
+          type: number
+        system_uptime:
+          type: number
+
+    UserAnalytics:
+      type: object
+      properties:
+        user_registrations:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+        active_users:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+        user_activity:
+          type: object
+          additionalProperties:
+            type: integer
+
+    TestAnalytics:
+      type: object
+      properties:
+        test_completions:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+        average_scores:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              average_percentage:
+                type: number
+        popular_tests:
+          type: array
+          items:
+            type: object
+            properties:
+              test_id:
+                type: string
+                format: uuid
+              test_title:
+                type: string
+              attempt_count:
+                type: integer
+
+    # System Settings
+    SystemSettings:
+      type: object
+      properties:
+        max_file_size_mb:
+          type: integer
+          description: Maximum PDF file size in MB
+        allowed_file_types:
+          type: array
+          items:
+            type: string
+          description: Allowed file types for upload
+        session_timeout_minutes:
+          type: integer
+          description: Session timeout in minutes
+        max_questions_per_test:
+          type: integer
+          description: Maximum questions per test
+        llm_provider:
+          type: string
+          enum: [openai, anthropic]
+          description: LLM provider to use
+        default_test_duration:
+          type: integer
+          description: Default test duration in minutes
+
+    # Notifications
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum: [info, warning, error, success]
+        read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    # Common
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+          format: uuid
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        pages:
+          type: integer
+        has_next:
+          type: boolean
+        has_prev:
+          type: boolean
+
+tags:
+  - name: Authentication
+    description: User authentication and session management
+  - name: Tests
+    description: Test management and operations
+  - name: Test Sessions
+    description: Test taking and session management
+  - name: Results
+    description: Test results and analytics
+  - name: Users
+    description: User profile and account management
+  - name: Admin
+    description: Administrative operations
+  - name: PDF Processing
+    description: PDF upload and question extraction
+  - name: Health
+    description: System health and monitoring
+  - name: Configuration
+    description: System configuration management
+  - name: Notifications
+    description: User notification management
