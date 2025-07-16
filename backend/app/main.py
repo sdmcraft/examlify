@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 from .database import engine, get_db
 from .models import Base, User, Test, TestAttempt, QuestionResult
 
+# Import API router
+from .api.router import router as api_router
+
 # Load environment variables
 load_dotenv()
 
@@ -27,6 +30,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include API router
+app.include_router(api_router)
 
 @app.get("/")
 async def root():
