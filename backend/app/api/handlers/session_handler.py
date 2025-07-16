@@ -66,39 +66,6 @@ class SessionHandler(BaseHandler):
             self.db.rollback()
             self.handle_error(e, status_code=500, detail="Failed to start test session")
 
-    def get_session_status(self, session_id: int, user: User) -> Dict[str, Any]:
-        """Get current session status and progress."""
-        try:
-            attempt = self.db.query(TestAttempt).filter(
-                TestAttempt.id == session_id,
-                TestAttempt.user_id == user.id
-            ).first()
-
-            if not attempt:
-                self.handle_error(Exception("Session not found"), status_code=404)
-
-            test = self.db.query(Test).filter(Test.id == attempt.test_id).first()
-
-            # Calculate time remaining
-            time_remaining = None
-            if attempt.duration_seconds:
-                elapsed = (datetime.utcnow() - attempt.started_at).total_seconds()
-                time_remaining = max(0, attempt.duration_seconds - elapsed)
-
-            return {
-                "session_id": attempt.id,
-                "test_id": attempt.test_id,
-                "test_title": test.title if test else None,
-                "started_at": attempt.started_at.isoformat(),
-                "completed_at": attempt.completed_at.isoformat() if attempt.completed_at else None,
-                "time_remaining": time_remaining,
-                "is_completed": attempt.completed_at is not None
-            }
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.handle_error(e, status_code=500, detail="Failed to get session status")
-
     def submit_test(self, test_id: int, session_id: int, answers: Dict[str, str], user: User) -> Dict[str, Any]:
         """Submit completed test and calculate results."""
         try:

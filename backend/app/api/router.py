@@ -271,8 +271,8 @@ async def get_user_test_history(
     db: Session = Depends(get_db)
 ):
     """Get test history for a specific user (admin only)."""
-    result_handler = ResultHandler(db)
-    return result_handler.get_user_test_history(user_id, current_user)
+    admin_handler = AdminHandler(db)
+    return admin_handler.get_user_test_history(user_id, current_user)
 
 # Admin routes
 @router.get("/admin/users")
@@ -292,10 +292,16 @@ async def create_user(
     db: Session = Depends(get_db)
 ):
     """Create a new user (admin only)."""
-    user_handler = UserHandler(db)
-    from ..models import UserRole
-    user_role = UserRole(user_data.role) if user_data.role else UserRole.USER
-    return user_handler.create_user(user_data.username, user_data.email, user_data.password, user_role)
+    admin_handler = AdminHandler(db)
+    return admin_handler.create_user(
+        user_data.username,
+        user_data.email,
+        user_data.password,
+        current_user,
+        user_data.first_name,
+        user_data.last_name,
+        user_data.role
+    )
 
 @router.put("/admin/users/{user_id}")
 async def update_user(
@@ -305,8 +311,8 @@ async def update_user(
     db: Session = Depends(get_db)
 ):
     """Update user information (admin only)."""
-    user_handler = UserHandler(db)
-    return user_handler.update_user(user_id, user_data.dict(exclude_unset=True), current_user)
+    admin_handler = AdminHandler(db)
+    return admin_handler.update_user(user_id, user_data.dict(exclude_unset=True), current_user)
 
 @router.delete("/admin/users/{user_id}")
 async def delete_user(
@@ -315,5 +321,5 @@ async def delete_user(
     db: Session = Depends(get_db)
 ):
     """Delete a user (admin only)."""
-    user_handler = UserHandler(db)
-    return user_handler.delete_user(user_id, current_user)
+    admin_handler = AdminHandler(db)
+    return admin_handler.delete_user(user_id, current_user)
