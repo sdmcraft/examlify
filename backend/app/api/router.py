@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
@@ -32,6 +32,38 @@ class SuccessResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+class UpdateProfileRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class CreateUserRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: str = "user"
+
+class UpdateUserRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: Optional[str] = None
+    status: Optional[str] = None
+
+class SubmitTestRequest(BaseModel):
+    session_id: str
+    answers: Dict[str, str]
+
+class StartSessionRequest(BaseModel):
+    duration_minutes: Optional[int] = None
 
 # Dependency to get current user
 async def get_current_user(
@@ -81,28 +113,21 @@ async def get_tests(
     test_handler = TestHandler(db)
     return test_handler.get_tests(current_user, status)
 
-@router.post("/tests")
-async def create_test(
-    title: str = Form(...),
-    description: Optional[str] = Form(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Create a new test."""
-    test_handler = TestHandler(db)
-    test = test_handler.create_test(title, description, current_user)
-    return test
-
 @router.post("/tests/upload")
 async def upload_pdf(
-    test_id: int = Form(...),
     pdf_file: UploadFile = File(...),
+    title: str = Form(...),
+    description: Optional[str] = Form(None),
+    duration_minutes: Optional[int] = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Upload and process PDF for a test."""
     test_handler = TestHandler(db)
-    return test_handler.upload_pdf(test_id, pdf_file, current_user)
+    # Create test first
+    test = test_handler.create_test(title, description, current_user)
+    # Then upload PDF
+    return test_handler.upload_pdf(test.id, pdf_file, current_user)
 
 @router.get("/tests/{test_id}")
 async def get_test(
@@ -117,7 +142,7 @@ async def get_test(
 @router.put("/tests/{test_id}")
 async def update_test(
     test_id: int,
-    update_data: Dict[str, Any],
+    update_data: Dict[str, Any] = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -139,23 +164,13 @@ async def delete_test(
 @router.post("/tests/{test_id}/start")
 async def start_test_session(
     test_id: int,
-    duration_minutes: Optional[int] = Form(None),
+    session_data: StartSessionRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Start a new test attempt session."""
     session_handler = SessionHandler(db)
-    return session_handler.start_test_session(test_id, current_user, duration_minutes)
-
-@router.get("/sessions/{session_id}/status")
-async def get_session_status(
-    session_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get current session status."""
-    session_handler = SessionHandler(db)
-    return session_handler.get_session_status(session_id, current_user)
+    return session_handler.start_test_session(test_id, current_user, session_data.duration_minutes)
 
 @router.post("/sessions/{session_id}/hint/{question_id}")
 async def get_hint(
@@ -182,14 +197,13 @@ async def get_solution(
 @router.post("/tests/{test_id}/submit")
 async def submit_test(
     test_id: int,
-    session_id: int,
-    answers: Dict[str, str],
+    submit_data: SubmitTestRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Submit completed test."""
     session_handler = SessionHandler(db)
-    return session_handler.submit_test(test_id, session_id, answers, current_user)
+    return session_handler.submit_test(test_id, int(submit_data.session_id), submit_data.answers, current_user)
 
 # Results routes
 @router.get("/results/{attempt_id}")
@@ -232,24 +246,23 @@ async def get_user_profile(
 
 @router.put("/users/profile")
 async def update_user_profile(
-    update_data: Dict[str, Any],
+    profile_data: UpdateProfileRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update current user's profile."""
     user_handler = UserHandler(db)
-    return user_handler.update_user_profile(current_user, update_data)
+    return user_handler.update_user_profile(current_user, profile_data.dict(exclude_unset=True))
 
 @router.put("/users/password")
 async def change_password(
-    current_password: str,
-    new_password: str,
+    password_data: ChangePasswordRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Change current user's password."""
     user_handler = UserHandler(db)
-    return user_handler.change_password(current_user, current_password, new_password)
+    return user_handler.change_password(current_user, password_data.current_password, password_data.new_password)
 
 @router.get("/users/{user_id}/history")
 async def get_user_test_history(
@@ -274,39 +287,26 @@ async def get_all_users(
 
 @router.post("/admin/users")
 async def create_user(
-    username: str = Form(...),
-    email: str = Form(...),
-    password: str = Form(...),
-    role: str = Form("user"),
+    user_data: CreateUserRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a new user (admin only)."""
     user_handler = UserHandler(db)
     from ..models import UserRole
-    user_role = UserRole(role) if role else UserRole.USER
-    return user_handler.create_user(username, email, password, user_role)
-
-@router.get("/admin/users/{user_id}")
-async def get_user_by_id(
-    user_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get user by ID (admin only)."""
-    user_handler = UserHandler(db)
-    return user_handler.get_user_by_id(user_id)
+    user_role = UserRole(user_data.role) if user_data.role else UserRole.USER
+    return user_handler.create_user(user_data.username, user_data.email, user_data.password, user_role)
 
 @router.put("/admin/users/{user_id}")
 async def update_user(
     user_id: int,
-    update_data: Dict[str, Any],
+    user_data: UpdateUserRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update user information (admin only)."""
     user_handler = UserHandler(db)
-    return user_handler.update_user(user_id, update_data, current_user)
+    return user_handler.update_user(user_id, user_data.dict(exclude_unset=True), current_user)
 
 @router.delete("/admin/users/{user_id}")
 async def delete_user(
@@ -317,43 +317,3 @@ async def delete_user(
     """Delete a user (admin only)."""
     user_handler = UserHandler(db)
     return user_handler.delete_user(user_id, current_user)
-
-@router.get("/admin/users/{user_id}/statistics")
-async def get_user_statistics(
-    user_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get user statistics (admin only)."""
-    user_handler = UserHandler(db)
-    return user_handler.get_user_statistics(user_id, current_user)
-
-@router.get("/admin/statistics")
-async def get_system_statistics(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get overall system statistics (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.get_system_statistics(current_user)
-
-@router.get("/admin/analytics/tests")
-async def get_test_analytics(
-    test_id: Optional[int] = Query(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get test analytics (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.get_test_analytics(current_user, test_id)
-
-@router.get("/admin/activity")
-async def get_user_activity_log(
-    user_id: Optional[int] = Query(None),
-    days: int = Query(30, ge=1, le=365),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get user activity log (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.get_user_activity_log(current_user, user_id, days)
