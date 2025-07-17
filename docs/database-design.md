@@ -2,13 +2,13 @@
 
 ## 1. Overview
 
-**Product:** examlify Test Management System
+**Product:** examlify Exam Management System
 **Version:** 1.0
 **Date:** 2025
 **Owner:** Database Architecture Team
 
 ### 1.1 Purpose
-This document outlines the database schema design for the examlify test management system, including table structures, relationships, indexes, and data management strategies.
+This document outlines the database schema design for the examlify exam management system, including table structures, relationships, indexes, and data management strategies.
 
 ### 1.2 Database Technology
 - **Database System:** MySQL 8.0+
@@ -21,19 +21,19 @@ This document outlines the database schema design for the examlify test manageme
 ## 2. Database Schema Overview
 
 ### 2.1 Core Entities
-- **Users:** System users (admins and test takers)
-- **Tests:** Test metadata and question data
-- **Test Attempts:** Individual test sessions
+- **Users:** System users (admins and exam takers)
+- **Exams:** Exam metadata and question data
+- **Exam Attempts:** Individual exam sessions
 - **Question Results:** Detailed answer analysis
 
 ### 2.2 Entity Relationship Diagram
 ```
 ┌─────────────┐    1:N    ┌─────────────┐    1:N    ┌─────────────┐
-│    Users    │◄──────────│    Tests    │◄──────────│Test Attempts│
+│    Users    │◄──────────│    Exams    │◄──────────│Exam Attempts│
 │             │           │             │           │             │
 │ - id (PK)   │           │ - id (PK)   │           │ - id (PK)   │
 │ - username  │           │ - title     │           │ - user_id   │
-│ - email     │           │ - pdf_data  │           │ - test_id   │
+│ - email     │           │ - pdf_data  │           │ - exam_id   │
 │ - role      │           │ - questions │           │ - answers   │
 └─────────────┘           └─────────────┘           └─────────────┘
                                                            │
@@ -76,14 +76,14 @@ CREATE TABLE users (
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-### 3.2 Tests Table
+### 3.2 Exams Table
 
 #### Purpose
-Stores test metadata, PDF content, and extracted question data in JSON format.
+Stores exam metadata, PDF content, and extracted question data in JSON format.
 
 #### Schema
 ```sql
-CREATE TABLE tests (
+CREATE TABLE exams (
     id INT PRIMARY KEY AUTO_INCREMENT,
     title VARCHAR(200) NOT NULL,
     description TEXT,
@@ -101,17 +101,17 @@ CREATE TABLE tests (
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-### 3.3 Test Attempts Table
+### 3.3 Exam Attempts Table
 
 #### Purpose
-Records individual test sessions including timing, answers, and scoring results.
+Records individual exam sessions including timing, answers, and scoring results.
 
 #### Schema
 ```sql
-CREATE TABLE test_attempts (
+CREATE TABLE exam_attempts (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
-    test_id INT NOT NULL,
+    exam_id INT NOT NULL,
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP NULL,
     duration_seconds INT,
@@ -121,8 +121,8 @@ CREATE TABLE test_attempts (
     percentage DECIMAL(5,2),
 
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE,
-    INDEX idx_user_test (user_id, test_id),
+    FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+    INDEX idx_user_exam (user_id, exam_id),
     INDEX idx_completed_at (completed_at),
     INDEX idx_percentage (percentage)
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -146,7 +146,7 @@ CREATE TABLE question_results (
     subject VARCHAR(100),
     topic VARCHAR(100),
 
-    FOREIGN KEY (attempt_id) REFERENCES test_attempts(id) ON DELETE CASCADE,
+    FOREIGN KEY (attempt_id) REFERENCES exam_attempts(id) ON DELETE CASCADE,
     INDEX idx_attempt_id (attempt_id),
     INDEX idx_question_id (question_id),
     INDEX idx_subject (subject),
@@ -162,7 +162,7 @@ CREATE TABLE question_results (
 ### 4.1 Questions JSON Schema
 ```json
 {
-  "test_id": "string",
+  "exam_id": "string",
   "title": "string",
   "instructions": "string",
   "questions": [
@@ -210,12 +210,12 @@ CREATE TABLE question_results (
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_role ON users(role);
 
--- Test management
-CREATE INDEX idx_tests_title ON tests(title);
-CREATE INDEX idx_tests_created_by ON tests(created_by);
+-- Exam management
+CREATE INDEX idx_exams_title ON exams(title);
+CREATE INDEX idx_exams_created_by ON exams(created_by);
 
 -- Analytics and reporting
-CREATE INDEX idx_attempts_user_completed ON test_attempts(user_id, completed_at DESC);
+CREATE INDEX idx_attempts_user_completed ON exam_attempts(user_id, completed_at DESC);
 CREATE INDEX idx_results_attempt_question ON question_results(attempt_id, question_id);
 ```
 
@@ -223,9 +223,9 @@ CREATE INDEX idx_results_attempt_question ON question_results(attempt_id, questi
 ```sql
 -- Additional indexes for enhanced performance
 CREATE INDEX idx_user_username ON users(username);
-CREATE INDEX idx_test_attempts_user_test ON test_attempts(user_id, test_id);
+CREATE INDEX idx_exam_attempts_user_exam ON exam_attempts(user_id, exam_id);
 CREATE INDEX idx_question_results_attempt ON question_results(attempt_id);
-CREATE INDEX idx_test_attempts_completed ON test_attempts(completed_at);
+CREATE INDEX idx_exam_attempts_completed ON exam_attempts(completed_at);
 ```
 
 ---
@@ -237,7 +237,7 @@ CREATE INDEX idx_test_attempts_completed ON test_attempts(completed_at);
 -- Application user with minimal privileges
 CREATE USER 'examlify_app'@'%' IDENTIFIED BY 'secure_password';
 GRANT SELECT, INSERT, UPDATE ON examlify.* TO 'examlify_app'@'%';
-GRANT DELETE ON examlify.test_attempts TO 'examlify_app'@'%';
+GRANT DELETE ON examlify.exam_attempts TO 'examlify_app'@'%';
 GRANT DELETE ON examlify.question_results TO 'examlify_app'@'%';
 
 -- Read-only analytics user
@@ -265,7 +265,7 @@ class DatabaseManager:
         # Implementation with connection pooling
         pass
 
-    def save_test_attempt(self, attempt) -> int:
+    def save_exam_attempt(self, attempt) -> int:
         # Transaction management
         pass
 ```

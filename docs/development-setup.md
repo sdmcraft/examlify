@@ -127,8 +127,7 @@ docker-compose -f docker-compose.dev.yml up -d
 # Connect to database directly
 mysql -h localhost -P 3306 -u examlify_user -pexamlify_pass examlify_dev
 
-# Run tests
-cd backend && pytest tests/ -v
+
 
 # Stop database
 docker-compose -f docker-compose.dev.yml down
@@ -183,7 +182,7 @@ examlify/
 │   │   ├── services/       # Business logic
 │   │   ├── utils/          # Utilities
 │   │   └── main.py         # FastAPI app
-│   ├── tests/              # Test files
+
 │   ├── requirements.txt    # Python dependencies
 │   └── env.example         # Environment template
 ├── frontend/               # Static web files

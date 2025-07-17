@@ -50,11 +50,7 @@ A web-based exam management system that enables automated question extraction fr
    python app/main.py
    ```
 
-4. **Test the handlers (optional):**
-   ```bash
-   cd backend
-   python test_handlers.py
-   ```
+
 
 5. **Serve frontend:**
    ```bash
@@ -86,7 +82,6 @@ A web-based exam management system that enables automated question extraction fr
 
 ### Development
 - **Database:** Docker MySQL container (no persistence)
-- **Testing:** pytest for backend, handler test script
 - **Development Server:** uvicorn with hot reload
 
 ## Architecture Overview
@@ -146,24 +141,8 @@ The main router (`backend/app/api/router.py`) maps HTTP endpoints to appropriate
 - **Caching** - Redis caching for performance
 - **Production Deployment** - Docker containers and CI/CD
 
-## Testing
+## API Documentation
 
-### Handler Testing
-Run the comprehensive handler test script:
-```bash
-cd backend
-python test_handlers.py
-```
-
-This will:
-- Create test users (admin and regular)
-- Test authentication flow
-- Test exam management operations
-- Test session management
-- Test user management
-- Test admin functionality
-
-### API Testing
 Access the interactive API documentation:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
