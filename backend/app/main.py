@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 # Import database and models
 from .database import engine, get_db
-from .models import Base, User, Test, TestAttempt, QuestionResult
+from .models import Base, User, Exam, ExamAttempt, QuestionResult
 
 # Import API router
 from .api.router import router as api_router
@@ -18,7 +18,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="examlify API",
-    description="Test Management System API",
+    description="Exam Management System API",
     version="1.0.0"
 )
 
@@ -38,18 +38,14 @@ app.include_router(api_router)
 async def root():
     return {"message": "examlify API is running!"}
 
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "database": "connected"}
-
 @app.get("/db-test")
 async def test_database(db = Depends(get_db)):
-    try:
-        # Test database connection by querying user count
-        user_count = db.query(User).count()
-        return {"status": "success", "message": "Database connected", "user_count": user_count}
-    except Exception as e:
-        return {"status": "error", "message": f"Database error: {str(e)}"}
+    """Test database connection."""
+    # Test database connection by querying user count
+    from sqlalchemy import func
+    from .models import User
+    user_count = db.query(func.count(User.id)).scalar()
+    return {"message": "Database connected successfully", "user_count": user_count}
 
 if __name__ == "__main__":
     import uvicorn

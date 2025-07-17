@@ -1,7 +1,7 @@
-from ..database import Base
 from .user import User, UserRole
-from .test import Test
-from .test_attempt import TestAttempt
+from .exam import Exam
+from .exam_attempt import ExamAttempt
 from .question_result import QuestionResult
+from ..database import Base
 
-__all__ = ["Base", "User", "UserRole", "Test", "TestAttempt", "QuestionResult"]
+__all__ = ["Base", "User", "UserRole", "Exam", "ExamAttempt", "QuestionResult"]

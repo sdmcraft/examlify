@@ -5,29 +5,29 @@ from fastapi import HTTPException
 from datetime import datetime, timedelta
 
 from .base_handler import BaseHandler
-from ...models import TestAttempt, QuestionResult, Test, User
+from ...models import ExamAttempt, QuestionResult, Exam, User
 
 
 class ResultHandler(BaseHandler):
-    """Handler for test results and analytics."""
+    """Handler for exam results and analytics."""
 
     def __init__(self, db: Session):
         super().__init__(db)
 
     def get_detailed_results(self, attempt_id: int, user: User) -> Dict[str, Any]:
-        """Get comprehensive test results and analysis."""
+        """Get comprehensive exam results and analysis."""
         try:
-            # Get test attempt
-            attempt = self.db.query(TestAttempt).filter(
-                TestAttempt.id == attempt_id,
-                TestAttempt.user_id == user.id
+            # Get exam attempt
+            attempt = self.db.query(ExamAttempt).filter(
+                ExamAttempt.id == attempt_id,
+                ExamAttempt.user_id == user.id
             ).first()
 
             if not attempt:
-                self.handle_error(Exception("Test attempt not found"), status_code=404)
+                self.handle_error(Exception("Exam attempt not found"), status_code=404)
 
-            # Get test details
-            test = self.db.query(Test).filter(Test.id == attempt.test_id).first()
+            # Get exam details
+            exam = self.db.query(Exam).filter(Exam.id == attempt.exam_id).first()
 
             # Get question results
             question_results = self.db.query(QuestionResult).filter(
@@ -58,10 +58,10 @@ class ResultHandler(BaseHandler):
 
             return {
                 "attempt_id": attempt.id,
-                "test": {
-                    "id": test.id if test else None,
-                    "title": test.title if test else None,
-                    "description": test.description if test else None
+                "exam": {
+                    "id": exam.id if exam else None,
+                    "title": exam.title if exam else None,
+                    "description": exam.description if exam else None
                 },
                 "user": {
                     "id": user.id,
@@ -94,35 +94,35 @@ class ResultHandler(BaseHandler):
         except Exception as e:
             self.handle_error(e, status_code=500, detail="Failed to get detailed results")
 
-    def get_test_history(self, user: User) -> List[TestAttempt]:
-        """Get user's test attempt history."""
+    def get_exam_history(self, user: User) -> List[ExamAttempt]:
+        """Get user's exam attempt history."""
         try:
-            attempts = self.db.query(TestAttempt).filter(
-                TestAttempt.user_id == user.id,
-                TestAttempt.completed_at.isnot(None)
-            ).order_by(desc(TestAttempt.completed_at)).all()
+            attempts = self.db.query(ExamAttempt).filter(
+                ExamAttempt.user_id == user.id,
+                ExamAttempt.completed_at.isnot(None)
+            ).order_by(desc(ExamAttempt.completed_at)).all()
 
-            # Add test details to each attempt
+            # Add exam details to each attempt
             for attempt in attempts:
-                test = self.db.query(Test).filter(Test.id == attempt.test_id).first()
-                attempt.test_title = test.title if test else "Unknown Test"
+                exam = self.db.query(Exam).filter(Exam.id == attempt.exam_id).first()
+                attempt.exam_title = exam.title if exam else "Unknown Exam"
 
             return attempts
         except Exception as e:
-            self.handle_error(e, status_code=500, detail="Failed to get test history")
+            self.handle_error(e, status_code=500, detail="Failed to get exam history")
 
     def get_performance_summary(self, user: User) -> Dict[str, Any]:
         """Get overall performance analytics and trends."""
         try:
             # Get all completed attempts
-            attempts = self.db.query(TestAttempt).filter(
-                TestAttempt.user_id == user.id,
-                TestAttempt.completed_at.isnot(None)
+            attempts = self.db.query(ExamAttempt).filter(
+                ExamAttempt.user_id == user.id,
+                ExamAttempt.completed_at.isnot(None)
             ).all()
 
             if not attempts:
                 return {
-                    "total_tests": 0,
+                    "total_exams": 0,
                     "average_score": 0,
                     "best_score": 0,
                     "total_questions": 0,
@@ -132,15 +132,15 @@ class ResultHandler(BaseHandler):
                 }
 
             # Calculate overall statistics
-            total_tests = len(attempts)
+            total_exams = len(attempts)
             total_score = sum(attempt.total_score for attempt in attempts)
             max_possible_score = sum(attempt.max_score for attempt in attempts)
-            average_score = total_score / total_tests if total_tests > 0 else 0
+            average_score = total_score / total_exams if total_exams > 0 else 0
             best_score = max(attempt.percentage for attempt in attempts if attempt.percentage)
 
             # Get question-level statistics
-            question_results = self.db.query(QuestionResult).join(TestAttempt).filter(
-                TestAttempt.user_id == user.id
+            question_results = self.db.query(QuestionResult).join(ExamAttempt).filter(
+                ExamAttempt.user_id == user.id
             ).all()
 
             total_questions = len(question_results)
@@ -167,15 +167,15 @@ class ResultHandler(BaseHandler):
                 }
 
             # Get recent trends (last 10 attempts)
-            recent_attempts = self.db.query(TestAttempt).filter(
-                TestAttempt.user_id == user.id,
-                TestAttempt.completed_at.isnot(None)
-            ).order_by(desc(TestAttempt.completed_at)).limit(10).all()
+            recent_attempts = self.db.query(ExamAttempt).filter(
+                ExamAttempt.user_id == user.id,
+                ExamAttempt.completed_at.isnot(None)
+            ).order_by(desc(ExamAttempt.completed_at)).limit(10).all()
 
             recent_trends = [
                 {
                     "attempt_id": attempt.id,
-                    "test_id": attempt.test_id,
+                    "exam_id": attempt.exam_id,
                     "score": attempt.total_score,
                     "percentage": float(attempt.percentage) if attempt.percentage else 0,
                     "completed_at": attempt.completed_at.isoformat()
@@ -184,7 +184,7 @@ class ResultHandler(BaseHandler):
             ]
 
             return {
-                "total_tests": total_tests,
+                "total_exams": total_exams,
                 "average_score": average_score,
                 "best_score": float(best_score) if best_score else 0,
                 "total_questions": total_questions,

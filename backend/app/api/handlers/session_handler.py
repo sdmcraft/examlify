@@ -5,88 +5,88 @@ from datetime import datetime, timedelta
 import json
 
 from .base_handler import BaseHandler
-from ...models import TestAttempt, Test, User, QuestionResult
+from ...models import ExamAttempt, Exam, User, QuestionResult
 
 
 class SessionHandler(BaseHandler):
-    """Handler for test session-related operations."""
+    """Handler for exam session-related operations."""
 
     def __init__(self, db: Session):
         super().__init__(db)
 
-    def start_test_session(self, test_id: int, user: User, duration_minutes: Optional[int] = None) -> Dict[str, Any]:
-        """Start a new test attempt session."""
+    def start_exam_session(self, exam_id: int, user: User, duration_minutes: Optional[int] = None) -> Dict[str, Any]:
+        """Start a new exam attempt session."""
         try:
-            # Get test details
-            test = self.db.query(Test).filter(Test.id == test_id).first()
-            if not test:
-                self.handle_error(Exception("Test not found"), status_code=404)
+            # Get exam details
+            exam = self.db.query(Exam).filter(Exam.id == exam_id).first()
+            if not exam:
+                self.handle_error(Exception("Exam not found"), status_code=404)
 
-            # Check if user has already started this test
-            existing_attempt = self.db.query(TestAttempt).filter(
-                TestAttempt.user_id == user.id,
-                TestAttempt.test_id == test_id,
-                TestAttempt.completed_at.is_(None)
+            # Check if user has already started this exam
+            existing_attempt = self.db.query(ExamAttempt).filter(
+                ExamAttempt.user_id == user.id,
+                ExamAttempt.exam_id == exam_id,
+                ExamAttempt.completed_at.is_(None)
             ).first()
 
             if existing_attempt:
-                self.handle_error(Exception("Test already in progress"), status_code=400)
+                self.handle_error(Exception("Exam already in progress"), status_code=400)
 
-            # Create new test attempt
-            test_attempt = TestAttempt(
+            # Create new exam attempt
+            exam_attempt = ExamAttempt(
                 user_id=user.id,
-                test_id=test_id,
+                exam_id=exam_id,
                 started_at=datetime.utcnow(),
                 duration_seconds=duration_minutes * 60 if duration_minutes else None
             )
 
-            self.db.add(test_attempt)
+            self.db.add(exam_attempt)
             self.db.commit()
-            self.db.refresh(test_attempt)
+            self.db.refresh(exam_attempt)
 
             # Calculate expiry time
             expires_at = None
             if duration_minutes:
-                expires_at = test_attempt.started_at + timedelta(minutes=duration_minutes)
+                expires_at = exam_attempt.started_at + timedelta(minutes=duration_minutes)
 
             return {
-                "session_id": test_attempt.id,
-                "test": {
-                    "id": test.id,
-                    "title": test.title,
-                    "description": test.description,
-                    "questions": test.questions_json
+                "session_id": exam_attempt.id,
+                "exam": {
+                    "id": exam.id,
+                    "title": exam.title,
+                    "description": exam.description,
+                    "questions": exam.questions_json
                 },
-                "started_at": test_attempt.started_at.isoformat(),
+                "started_at": exam_attempt.started_at.isoformat(),
                 "expires_at": expires_at.isoformat() if expires_at else None
             }
         except HTTPException:
             raise
         except Exception as e:
             self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to start test session")
+            self.handle_error(e, status_code=500, detail="Failed to start exam session")
 
-    def submit_test(self, test_id: int, session_id: int, answers: Dict[str, str], user: User) -> Dict[str, Any]:
-        """Submit completed test and calculate results."""
+    def submit_exam(self, exam_id: int, session_id: int, answers: Dict[str, str], user: User) -> Dict[str, Any]:
+        """Submit completed exam and calculate results."""
         try:
             # Validate session
-            attempt = self.db.query(TestAttempt).filter(
-                TestAttempt.id == session_id,
-                TestAttempt.user_id == user.id,
-                TestAttempt.test_id == test_id,
-                TestAttempt.completed_at.is_(None)
+            attempt = self.db.query(ExamAttempt).filter(
+                ExamAttempt.id == session_id,
+                ExamAttempt.user_id == user.id,
+                ExamAttempt.exam_id == exam_id,
+                ExamAttempt.completed_at.is_(None)
             ).first()
 
             if not attempt:
                 self.handle_error(Exception("Invalid or completed session"), status_code=400)
 
-            # Get test details
-            test = self.db.query(Test).filter(Test.id == test_id).first()
-            if not test or not test.questions_json:
-                self.handle_error(Exception("Test questions not found"), status_code=400)
+            # Get exam details
+            exam = self.db.query(Exam).filter(Exam.id == exam_id).first()
+            if not exam or not exam.questions_json:
+                self.handle_error(Exception("Exam questions not found"), status_code=400)
 
             # Calculate results
-            questions = test.questions_json.get("questions", [])
+            questions = exam.questions_json.get("questions", [])
             total_score = 0
             max_score = len(questions)
             question_results = []
@@ -117,7 +117,7 @@ class SessionHandler(BaseHandler):
             # Calculate percentage
             percentage = (total_score / max_score * 100) if max_score > 0 else 0
 
-            # Update test attempt
+            # Update exam attempt
             attempt.completed_at = datetime.utcnow()
             attempt.answers_json = answers
             attempt.total_score = total_score
@@ -141,27 +141,27 @@ class SessionHandler(BaseHandler):
             raise
         except Exception as e:
             self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to submit test")
+            self.handle_error(e, status_code=500, detail="Failed to submit exam")
 
     def get_hint(self, session_id: int, question_id: str, user: User) -> Dict[str, Any]:
         """Get hint for a specific question."""
         try:
             # Validate session
-            attempt = self.db.query(TestAttempt).filter(
-                TestAttempt.id == session_id,
-                TestAttempt.user_id == user.id,
-                TestAttempt.completed_at.is_(None)
+            attempt = self.db.query(ExamAttempt).filter(
+                ExamAttempt.id == session_id,
+                ExamAttempt.user_id == user.id,
+                ExamAttempt.completed_at.is_(None)
             ).first()
 
             if not attempt:
                 self.handle_error(Exception("Invalid or completed session"), status_code=400)
 
-            # Get test and question details
-            test = self.db.query(Test).filter(Test.id == attempt.test_id).first()
-            if not test or not test.questions_json:
-                self.handle_error(Exception("Test questions not found"), status_code=400)
+            # Get exam and question details
+            exam = self.db.query(Exam).filter(Exam.id == attempt.exam_id).first()
+            if not exam or not exam.questions_json:
+                self.handle_error(Exception("Exam questions not found"), status_code=400)
 
-            questions = test.questions_json.get("questions", [])
+            questions = exam.questions_json.get("questions", [])
             question = next((q for q in questions if q.get("id") == question_id), None)
 
             if not question:
@@ -184,21 +184,21 @@ class SessionHandler(BaseHandler):
         """Get detailed solution for a specific question."""
         try:
             # Validate session
-            attempt = self.db.query(TestAttempt).filter(
-                TestAttempt.id == session_id,
-                TestAttempt.user_id == user.id,
-                TestAttempt.completed_at.is_(None)
+            attempt = self.db.query(ExamAttempt).filter(
+                ExamAttempt.id == session_id,
+                ExamAttempt.user_id == user.id,
+                ExamAttempt.completed_at.is_(None)
             ).first()
 
             if not attempt:
                 self.handle_error(Exception("Invalid or completed session"), status_code=400)
 
-            # Get test and question details
-            test = self.db.query(Test).filter(Test.id == attempt.test_id).first()
-            if not test or not test.questions_json:
-                self.handle_error(Exception("Test questions not found"), status_code=400)
+            # Get exam and question details
+            exam = self.db.query(Exam).filter(Exam.id == attempt.exam_id).first()
+            if not exam or not exam.questions_json:
+                self.handle_error(Exception("Exam questions not found"), status_code=400)
 
-            questions = test.questions_json.get("questions", [])
+            questions = exam.questions_json.get("questions", [])
             question = next((q for q in questions if q.get("id") == question_id), None)
 
             if not question:

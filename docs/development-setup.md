@@ -52,9 +52,6 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Test database connection
-python test_db.py
-
 # Copy environment file and configure
 cp env.example .env
 # Edit .env with your OpenAI API key and other settings
@@ -93,8 +90,8 @@ python -m http.server 3000
 ### Database Schema
 The database includes:
 - `users` - User accounts and authentication
-- `tests` - Test definitions and PDF content
-- `test_attempts` - User test attempts and scores
+- `exams` - Exam definitions and PDF content
+- `exam_attempts` - User exam attempts and scores
 - `question_results` - Individual question results with subject/topic tracking
 
 ### Current Setup (Minimal)

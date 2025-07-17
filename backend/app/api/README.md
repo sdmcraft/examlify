@@ -10,8 +10,8 @@ api/
 │   ├── __init__.py          # Exports all handler classes
 │   ├── base_handler.py      # Base handler with common functionality
 │   ├── auth_handler.py      # Authentication operations
-│   ├── test_handler.py      # Test management operations
-│   ├── session_handler.py   # Test session operations
+│   ├── exam_handler.py      # Exam management operations
+│   ├── session_handler.py   # Exam session operations
 │   ├── result_handler.py    # Results and analytics
 │   ├── user_handler.py      # User management operations
 │   └── admin_handler.py     # Admin-specific operations
@@ -26,7 +26,6 @@ The base class that provides common functionality for all handlers:
 - Database session management
 - Error handling with appropriate HTTP status codes
 - Resource validation
-- Pagination utilities
 
 ### AuthHandler
 Handles authentication-related operations:
@@ -35,26 +34,26 @@ Handles authentication-related operations:
 - Authentication status checking
 - Logout functionality
 
-### TestHandler
-Manages test-related operations:
-- Test CRUD operations
+### ExamHandler
+Manages exam-related operations:
+- Exam CRUD operations
 - PDF upload and processing
 - Question extraction (placeholder for LLM integration)
-- Access control for test operations
+- Access control for exam operations
 
 ### SessionHandler
-Handles test session management:
-- Starting test attempts
+Handles exam session management:
+- Starting exam attempts
 - Session status tracking
-- Test submission and scoring
+- Exam submission and scoring
 - Hint and solution generation (placeholder for LLM integration)
 
 ### ResultHandler
-Manages test results and analytics:
+Manages exam results and analytics:
 - Detailed result retrieval
 - Performance analytics
 - Subject-wise performance breakdown
-- Test history and trends
+- Exam history and trends
 
 ### UserHandler
 Handles user-related operations:
@@ -67,13 +66,13 @@ Handles user-related operations:
 Provides admin-specific functionality:
 - System-wide statistics
 - User management
-- Test analytics
+- Exam analytics
 - Activity logging
 
 ## Usage Example
 
 ```python
-from app.api.handlers import AuthHandler, TestHandler
+from app.api.handlers import AuthHandler, ExamHandler
 from app.database import get_db
 
 # Get database session
@@ -81,7 +80,7 @@ db = next(get_db())
 
 # Create handlers
 auth_handler = AuthHandler(db)
-test_handler = TestHandler(db)
+exam_handler = ExamHandler(db)
 
 # Use handlers
 try:
@@ -92,10 +91,10 @@ try:
     # Get current user
     user = auth_handler.get_current_user(token)
 
-    # Create a test
-    test = test_handler.create_test("My Test", "Test description", user)
+    # Create an exam
+    exam = exam_handler.create_exam("My Exam", "Exam description", user)
 
-    print(f"Created test: {test.title}")
+    print(f"Created exam: {exam.title}")
 
 except Exception as e:
     print(f"Error: {e}")
@@ -110,31 +109,31 @@ The router (`router.py`) maps HTTP requests to the appropriate handler methods:
 - `POST /api/auth/logout` - User logout
 - `GET /api/auth/status` - Check authentication status
 
-### Tests
-- `GET /api/tests` - List tests
-- `POST /api/tests` - Create test
-- `POST /api/tests/upload` - Upload PDF
-- `GET /api/tests/{test_id}` - Get test details
-- `PUT /api/tests/{test_id}` - Update test
-- `DELETE /api/tests/{test_id}` - Delete test
+### Exams
+- `GET /api/exams` - List exams
+- `POST /api/exams` - Create exam
+- `POST /api/exams/upload` - Upload PDF
+- `GET /api/exams/{exam_id}` - Get exam details
+- `PUT /api/exams/{exam_id}` - Update exam
+- `DELETE /api/exams/{exam_id}` - Delete exam
 
-### Test Sessions
-- `POST /api/tests/{test_id}/start` - Start test session
+### Exam Sessions
+- `POST /api/exams/{exam_id}/start` - Start exam session
 - `GET /api/sessions/{session_id}/status` - Get session status
 - `POST /api/sessions/{session_id}/hint/{question_id}` - Get hint
 - `POST /api/sessions/{session_id}/solution/{question_id}` - Get solution
-- `POST /api/tests/{test_id}/submit` - Submit test
+- `POST /api/exams/{exam_id}/submit` - Submit exam
 
 ### Results
 - `GET /api/results/{attempt_id}` - Get detailed results
-- `GET /api/results/history` - Get test history
+- `GET /api/results/history` - Get exam history
 - `GET /api/results/summary` - Get performance summary
 
 ### Users
 - `GET /api/users/profile` - Get user profile
 - `PUT /api/users/profile` - Update user profile
 - `PUT /api/users/password` - Change password
-- `GET /api/users/{user_id}/history` - Get user test history
+- `GET /api/users/{user_id}/history` - Get user exam history
 
 ### Admin
 - `GET /api/admin/users` - List all users
@@ -144,7 +143,7 @@ The router (`router.py`) maps HTTP requests to the appropriate handler methods:
 - `DELETE /api/admin/users/{user_id}` - Delete user
 - `GET /api/admin/users/{user_id}/statistics` - Get user statistics
 - `GET /api/admin/statistics` - Get system statistics
-- `GET /api/admin/analytics/tests` - Get test analytics
+- `GET /api/admin/analytics/exams` - Get exam analytics
 - `GET /api/admin/activity` - Get activity log
 
 ## Testing
@@ -159,7 +158,7 @@ python test_handlers.py
 This will:
 1. Create test users (admin and regular user)
 2. Test authentication
-3. Test test management
+3. Test exam management
 4. Test session management
 5. Test user management
 6. Test admin functionality

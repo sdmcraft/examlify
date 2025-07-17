@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from ..database import get_db
 from ..models import User
 from .handlers import (
-    AuthHandler, TestHandler, SessionHandler,
+    AuthHandler, ExamHandler, SessionHandler,
     ResultHandler, UserHandler, AdminHandler
 )
 
@@ -58,7 +58,7 @@ class UpdateUserRequest(BaseModel):
     role: Optional[str] = None
     status: Optional[str] = None
 
-class SubmitTestRequest(BaseModel):
+class SubmitExamRequest(BaseModel):
     session_id: str
     answers: Dict[str, str]
 
@@ -102,18 +102,18 @@ async def check_auth_status(
     auth_handler = AuthHandler(db)
     return auth_handler.check_auth_status("")  # Token is handled by dependency
 
-# Test routes
-@router.get("/tests")
-async def get_tests(
+# Exam routes
+@router.get("/exams")
+async def get_exams(
     status: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get list of available tests."""
-    test_handler = TestHandler(db)
-    return test_handler.get_tests(current_user, status)
+    """Get list of available exams."""
+    exam_handler = ExamHandler(db)
+    return exam_handler.get_exams(current_user, status)
 
-@router.post("/tests/upload")
+@router.post("/exams/upload")
 async def upload_pdf(
     pdf_file: UploadFile = File(...),
     title: str = Form(...),
@@ -122,55 +122,55 @@ async def upload_pdf(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Upload and process PDF for a test."""
-    test_handler = TestHandler(db)
-    # Create test first
-    test = test_handler.create_test(title, description, current_user)
+    """Upload and process PDF for an exam."""
+    exam_handler = ExamHandler(db)
+    # Create exam first
+    exam = exam_handler.create_exam(title, description, current_user)
     # Then upload PDF
-    return test_handler.upload_pdf(test.id, pdf_file, current_user)
+    return exam_handler.upload_pdf(exam.id, pdf_file, current_user)
 
-@router.get("/tests/{test_id}")
-async def get_test(
-    test_id: int,
+@router.get("/exams/{exam_id}")
+async def get_exam(
+    exam_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get specific test details."""
-    test_handler = TestHandler(db)
-    return test_handler.get_test(test_id, current_user)
+    """Get specific exam details."""
+    exam_handler = ExamHandler(db)
+    return exam_handler.get_exam(exam_id, current_user)
 
-@router.put("/tests/{test_id}")
-async def update_test(
-    test_id: int,
+@router.put("/exams/{exam_id}")
+async def update_exam(
+    exam_id: int,
     update_data: Dict[str, Any] = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update test metadata."""
-    test_handler = TestHandler(db)
-    return test_handler.update_test(test_id, update_data, current_user)
+    """Update exam metadata."""
+    exam_handler = ExamHandler(db)
+    return exam_handler.update_exam(exam_id, update_data, current_user)
 
-@router.delete("/tests/{test_id}")
-async def delete_test(
-    test_id: int,
+@router.delete("/exams/{exam_id}")
+async def delete_exam(
+    exam_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delete a test."""
-    test_handler = TestHandler(db)
-    return test_handler.delete_test(test_id, current_user)
+    """Delete an exam."""
+    exam_handler = ExamHandler(db)
+    return exam_handler.delete_exam(exam_id, current_user)
 
-# Test session routes
-@router.post("/tests/{test_id}/start")
-async def start_test_session(
-    test_id: int,
+# Exam session routes
+@router.post("/exams/{exam_id}/start")
+async def start_exam_session(
+    exam_id: int,
     session_data: StartSessionRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Start a new test attempt session."""
+    """Start a new exam attempt session."""
     session_handler = SessionHandler(db)
-    return session_handler.start_test_session(test_id, current_user, session_data.duration_minutes)
+    return session_handler.start_exam_session(exam_id, current_user, session_data.duration_minutes)
 
 @router.post("/sessions/{session_id}/hint/{question_id}")
 async def get_hint(
@@ -194,16 +194,16 @@ async def get_solution(
     session_handler = SessionHandler(db)
     return session_handler.get_solution(session_id, question_id, current_user)
 
-@router.post("/tests/{test_id}/submit")
-async def submit_test(
-    test_id: int,
-    submit_data: SubmitTestRequest = Body(...),
+@router.post("/exams/{exam_id}/submit")
+async def submit_exam(
+    exam_id: int,
+    submit_data: SubmitExamRequest = Body(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Submit completed test."""
+    """Submit completed exam."""
     session_handler = SessionHandler(db)
-    return session_handler.submit_test(test_id, int(submit_data.session_id), submit_data.answers, current_user)
+    return session_handler.submit_exam(exam_id, int(submit_data.session_id), submit_data.answers, current_user)
 
 # Results routes
 @router.get("/results/{attempt_id}")
@@ -212,18 +212,18 @@ async def get_detailed_results(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get detailed test results."""
+    """Get detailed exam results."""
     result_handler = ResultHandler(db)
     return result_handler.get_detailed_results(attempt_id, current_user)
 
 @router.get("/results/history")
-async def get_test_history(
+async def get_exam_history(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get user's test attempt history."""
+    """Get user's exam attempt history."""
     result_handler = ResultHandler(db)
-    return result_handler.get_test_history(current_user)
+    return result_handler.get_exam_history(current_user)
 
 @router.get("/results/summary")
 async def get_performance_summary(
@@ -265,14 +265,14 @@ async def change_password(
     return user_handler.change_password(current_user, password_data.current_password, password_data.new_password)
 
 @router.get("/users/{user_id}/history")
-async def get_user_test_history(
+async def get_user_exam_history(
     user_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get test history for a specific user (admin only)."""
+    """Get exam history for a specific user (admin only)."""
     admin_handler = AdminHandler(db)
-    return admin_handler.get_user_test_history(user_id, current_user)
+    return admin_handler.get_user_exam_history(user_id, current_user)
 
 # Admin routes
 @router.get("/admin/users")

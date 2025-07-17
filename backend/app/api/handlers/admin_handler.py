@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash
 
 from .base_handler import BaseHandler
-from ...models import User, Test, TestAttempt, QuestionResult, UserRole
+from ...models import User, Exam, ExamAttempt, QuestionResult, UserRole
 
 
 class AdminHandler(BaseHandler):
@@ -155,31 +155,31 @@ class AdminHandler(BaseHandler):
             self.db.rollback()
             self.handle_error(e, status_code=500, detail="Failed to delete user")
 
-    def get_user_test_history(self, user_id: int, requesting_user: User) -> Dict[str, Any]:
-        """Get test history for a specific user (admin only)."""
+    def get_user_exam_history(self, user_id: int, requesting_user: User) -> Dict[str, Any]:
+        """Get exam history for a specific user (admin only)."""
         try:
             # Check if requesting user is admin
             if requesting_user.role != UserRole.ADMIN:
                 self.handle_error(Exception("Access denied"), status_code=403)
 
-            # Get user's test attempts
-            attempts = self.db.query(TestAttempt).filter(
-                TestAttempt.user_id == user_id,
-                TestAttempt.completed_at.isnot(None)
-            ).order_by(desc(TestAttempt.completed_at)).all()
+            # Get user's exam attempts
+            attempts = self.db.query(ExamAttempt).filter(
+                ExamAttempt.user_id == user_id,
+                ExamAttempt.completed_at.isnot(None)
+            ).order_by(desc(ExamAttempt.completed_at)).all()
 
-            # Add test details
+            # Add exam details
             for attempt in attempts:
-                test = self.db.query(Test).filter(Test.id == attempt.test_id).first()
-                attempt.test_title = test.title if test else "Unknown Test"
+                exam = self.db.query(Exam).filter(Exam.id == attempt.exam_id).first()
+                attempt.exam_title = exam.title if exam else "Unknown Exam"
 
             return {
                 "user_id": user_id,
                 "attempts": [
                     {
                         "attempt_id": attempt.id,
-                        "test_id": attempt.test_id,
-                        "test_title": attempt.test_title,
+                        "exam_id": attempt.exam_id,
+                        "exam_title": attempt.exam_title,
                         "score": attempt.total_score,
                         "max_score": attempt.max_score,
                         "percentage": float(attempt.percentage) if attempt.percentage else 0,
@@ -192,4 +192,4 @@ class AdminHandler(BaseHandler):
         except HTTPException:
             raise
         except Exception as e:
-            self.handle_error(e, status_code=500, detail="Failed to get user test history")
+            self.handle_error(e, status_code=500, detail="Failed to get user exam history")

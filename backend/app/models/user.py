@@ -1,8 +1,8 @@
-from sqlalchemy import Column, Integer, String, Enum, DateTime, Index
+from sqlalchemy import Column, Integer, String, DateTime, Enum, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from ..database import Base
 import enum
+from ..database import Base
 
 class UserRole(enum.Enum):
     ADMIN = "admin"
@@ -13,15 +13,17 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
-    email = Column(String(100), index=True)
-    role = Column(Enum(UserRole), default=UserRole.USER, index=True)
+    first_name = Column(String(50))
+    last_name = Column(String(50))
+    role = Column(Enum(UserRole), default=UserRole.USER)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     # Relationships
-    tests = relationship("Test", back_populates="created_by_user")
-    test_attempts = relationship("TestAttempt", back_populates="user")
+    exams = relationship("Exam", back_populates="created_by_user")
+    exam_attempts = relationship("ExamAttempt", back_populates="user")
 
     def __repr__(self):
-        return f"<User(id={self.id}, username='{self.username}', role='{self.role.value}')>"
+        return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
