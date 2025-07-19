@@ -11,8 +11,9 @@ class Exam(Base):
     description = Column(Text)
     duration_minutes = Column(Integer)
     pdf_filename = Column(String(255))
-    pdf_content = Column(JSON)
+    pdf_content = Column(JSON, nullable=True)  # Optional field for future use if needed
     questions_json = Column(JSON)
+    status = Column(String(50), default="draft")  # draft, uploaded, processed, processing_failed
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

@@ -1,3 +1,5 @@
+import logging
+import traceback
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -7,7 +9,10 @@ import jwt
 import os
 
 from .base_handler import BaseHandler
-from ...models import User, UserRole
+from ...models import User
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class AuthHandler(BaseHandler):
@@ -17,7 +22,7 @@ class AuthHandler(BaseHandler):
         super().__init__(db)
         self.secret_key = os.getenv("JWT_SECRET_KEY", "your-secret-key")
         self.algorithm = "HS256"
-        self.access_token_expire_minutes = 30
+        self.access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 365 * 24 * 60))  # 365 days default
 
     def login(self, username: str, password: str) -> Dict[str, Any]:
         """Authenticate user and return access token."""
@@ -36,7 +41,7 @@ class AuthHandler(BaseHandler):
             # Generate access token
             access_token_expires = timedelta(minutes=self.access_token_expire_minutes)
             access_token = self._create_access_token(
-                data={"sub": str(user.id), "username": user.username, "role": user.role.value},
+                data={"sub": str(user.id), "username": user.username, "role": user.role},
                 expires_delta=access_token_expires
             )
 
@@ -47,7 +52,7 @@ class AuthHandler(BaseHandler):
                     "id": user.id,
                     "username": user.username,
                     "email": user.email,
-                    "role": user.role.value
+                    "role": user.role
                 }
             }
         except HTTPException:
@@ -79,7 +84,7 @@ class AuthHandler(BaseHandler):
             return user
         except jwt.ExpiredSignatureError:
             self.handle_error(Exception("Token has expired"), status_code=401)
-        except jwt.JWTError:
+        except jwt.PyJWTError:
             self.handle_error(Exception("Invalid token"), status_code=401)
         except Exception as e:
             self.handle_error(e, status_code=500, detail="Authentication failed")
@@ -94,7 +99,7 @@ class AuthHandler(BaseHandler):
                     "id": user.id,
                     "username": user.username,
                     "email": user.email,
-                    "role": user.role.value
+                    "role": user.role
                 }
             }
         except HTTPException:

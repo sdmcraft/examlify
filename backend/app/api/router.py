@@ -58,6 +58,10 @@ class UpdateUserRequest(BaseModel):
     role: Optional[str] = None
     status: Optional[str] = None
 
+class CreateExamRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+
 class SubmitExamRequest(BaseModel):
     session_id: str
     answers: Dict[str, str]
@@ -113,21 +117,18 @@ async def get_exams(
     exam_handler = ExamHandler(db)
     return exam_handler.get_exams(current_user, status)
 
-@router.post("/exams/upload")
-async def upload_pdf(
-    pdf_file: UploadFile = File(...),
+@router.post("/exams")
+async def create_exam(
     title: str = Form(...),
     description: Optional[str] = Form(None),
     duration_minutes: Optional[int] = Form(None),
+    pdf_file: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Upload and process PDF for an exam."""
+    """Create a new exam with optional PDF upload."""
     exam_handler = ExamHandler(db)
-    # Create exam first
-    exam = exam_handler.create_exam(title, description, current_user)
-    # Then upload PDF
-    return exam_handler.upload_pdf(exam.id, pdf_file, current_user)
+    return await exam_handler.create_exam(title, description, current_user, duration_minutes, pdf_file)
 
 @router.get("/exams/{exam_id}")
 async def get_exam(
@@ -137,7 +138,24 @@ async def get_exam(
 ):
     """Get specific exam details."""
     exam_handler = ExamHandler(db)
-    return exam_handler.get_exam(exam_id, current_user)
+    exam = exam_handler.get_exam(exam_id, current_user)
+
+    # Convert to dict with full details including processed JSON
+    exam_dict = {
+        "id": exam.id,
+        "title": exam.title,
+        "description": exam.description,
+        "duration_minutes": exam.duration_minutes,
+        "pdf_filename": exam.pdf_filename,
+        "status": exam.status,
+        "created_by": exam.created_by,
+        "created_at": exam.created_at.isoformat() if exam.created_at else None,
+        "updated_at": exam.updated_at.isoformat() if exam.updated_at else None,
+        "questions_json": exam.questions_json,  # Full processed JSON data
+        "pdf_content": exam.pdf_content  # Any additional PDF metadata
+    }
+
+    return exam_dict
 
 @router.put("/exams/{exam_id}")
 async def update_exam(
@@ -159,6 +177,26 @@ async def delete_exam(
     """Delete an exam."""
     exam_handler = ExamHandler(db)
     return exam_handler.delete_exam(exam_id, current_user)
+
+@router.get("/exams/{exam_id}/questions")
+async def get_exam_questions(
+    exam_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get processed questions and metadata from an exam."""
+    exam_handler = ExamHandler(db)
+    exam = exam_handler.get_exam(exam_id, current_user)
+
+    if not exam.questions_json:
+        raise HTTPException(status_code=404, detail="No processed questions found for this exam")
+
+    return {
+        "exam_id": exam.id,
+        "exam_title": exam.title,
+        "status": exam.status,
+        "processed_data": exam.questions_json
+    }
 
 # Exam session routes
 @router.post("/exams/{exam_id}/start")

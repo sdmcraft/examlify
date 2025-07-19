@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash
 
 from .base_handler import BaseHandler
-from ...models import User, Exam, ExamAttempt, QuestionResult, UserRole
+from ...models import User, Exam, ExamAttempt, QuestionResult
 
 
 class AdminHandler(BaseHandler):
@@ -19,18 +19,16 @@ class AdminHandler(BaseHandler):
         """Get list of all users in the system (admin only)."""
         try:
             # Check if requesting user is admin
-            if requesting_user.role != UserRole.ADMIN:
+            if requesting_user.role != "admin":
                 self.handle_error(Exception("Access denied"), status_code=403)
 
             query = self.db.query(User)
 
             # Filter by role if provided
             if role:
-                try:
-                    user_role = UserRole(role)
-                    query = query.filter(User.role == user_role)
-                except ValueError:
+                if role not in ["admin", "user"]:
                     self.handle_error(Exception("Invalid role"), status_code=400)
+                query = query.filter(User.role == role)
 
             return query.order_by(desc(User.created_at)).all()
         except HTTPException:
@@ -42,7 +40,7 @@ class AdminHandler(BaseHandler):
         """Create a new user (admin only)."""
         try:
             # Check if requesting user is admin
-            if requesting_user.role != UserRole.ADMIN:
+            if requesting_user.role != "admin":
                 self.handle_error(Exception("Access denied"), status_code=403)
 
             # Check if username or email already exists
@@ -56,10 +54,8 @@ class AdminHandler(BaseHandler):
             # Hash password
             password_hash = generate_password_hash(password)
 
-            # Parse role
-            try:
-                user_role = UserRole(role)
-            except ValueError:
+            # Validate role
+            if role not in ["admin", "user"]:
                 self.handle_error(Exception("Invalid role"), status_code=400)
 
             # Create user
@@ -69,7 +65,7 @@ class AdminHandler(BaseHandler):
                 password_hash=password_hash,
                 first_name=first_name,
                 last_name=last_name,
-                role=user_role
+                role=role
             )
 
             self.db.add(user)
@@ -87,7 +83,7 @@ class AdminHandler(BaseHandler):
         """Update user information (admin only)."""
         try:
             # Check if requesting user is admin
-            if requesting_user.role != UserRole.ADMIN:
+            if requesting_user.role != "admin":
                 self.handle_error(Exception("Access denied"), status_code=403)
 
             user = self.db.query(User).filter(User.id == user_id).first()
@@ -112,9 +108,7 @@ class AdminHandler(BaseHandler):
 
                     # Handle role field
                     if field == "role":
-                        try:
-                            value = UserRole(value)
-                        except ValueError:
+                        if value not in ["admin", "user"]:
                             self.handle_error(Exception("Invalid role"), status_code=400)
 
                     setattr(user, field, value)
@@ -134,7 +128,7 @@ class AdminHandler(BaseHandler):
         """Delete a user (admin only)."""
         try:
             # Check if requesting user is admin
-            if requesting_user.role != UserRole.ADMIN:
+            if requesting_user.role != "admin":
                 self.handle_error(Exception("Access denied"), status_code=403)
 
             # Prevent admin from deleting themselves
@@ -159,7 +153,7 @@ class AdminHandler(BaseHandler):
         """Get exam history for a specific user (admin only)."""
         try:
             # Check if requesting user is admin
-            if requesting_user.role != UserRole.ADMIN:
+            if requesting_user.role != "admin":
                 self.handle_error(Exception("Access denied"), status_code=403)
 
             # Get user's exam attempts

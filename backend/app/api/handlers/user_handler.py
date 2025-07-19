@@ -5,7 +5,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime
 
 from .base_handler import BaseHandler
-from ...models import User, UserRole
+from ...models import User
 
 
 class UserHandler(BaseHandler):

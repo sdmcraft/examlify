@@ -1,1 +1,58 @@
- 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam Data Fetcher</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Exam Data Fetcher</h1>
+        <p>Enter an exam ID and JWT token to fetch the exam data</p>
+
+        <form id="examForm" class="form">
+            <div class="form-group">
+                <label for="examId">Exam ID:</label>
+                <input type="number" id="examId" name="examId" required placeholder="Enter exam ID">
+            </div>
+
+            <div class="form-group">
+                <label for="jwtToken">JWT Token:</label>
+                <textarea id="jwtToken" name="jwtToken" required placeholder="Enter your JWT token" rows="3"></textarea>
+            </div>
+
+            <button type="submit" class="btn">Fetch Exam Data</button>
+        </form>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Fetching exam data...</p>
+        </div>
+
+        <div id="error" class="error hidden">
+            <h3>Error</h3>
+            <p id="errorMessage"></p>
+        </div>
+
+        <!-- Formatted exam display section -->
+        <div id="formattedExam" class="formatted-exam hidden">
+            <div class="exam-header">
+                <h2 id="examTitle">Exam Title</h2>
+                <div class="exam-meta">
+                    <span id="examSubject" class="meta-item"></span>
+                    <span id="examTopic" class="meta-item"></span>
+                    <span id="examDuration" class="meta-item"></span>
+                    <span id="examDifficulty" class="meta-item"></span>
+                </div>
+            </div>
+
+            <div class="questions-container" id="questionsContainer">
+                <!-- Questions will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

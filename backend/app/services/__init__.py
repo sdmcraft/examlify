@@ -1,1 +1,2 @@
-# Business Logic Services Package
+# Services package
+from .pdf_processing import PDFProcessor

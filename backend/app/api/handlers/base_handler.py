@@ -1,7 +1,12 @@
+import logging
+import traceback
 from typing import Optional, Any, Dict, List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from pydantic import BaseModel
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class BaseHandler:

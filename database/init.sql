@@ -1,6 +1,6 @@
 -- examlify Database Schema
 -- Version: 1.0
--- Description: Test Management System Database
+-- Description: Exam Management System Database
 
 -- Create database if not exists
 CREATE DATABASE IF NOT EXISTS examlify_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     email VARCHAR(100),
-    role ENUM('admin', 'user') DEFAULT 'user',
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    role VARCHAR(10) DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
@@ -21,14 +23,16 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_role (role)
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Tests Table
-CREATE TABLE IF NOT EXISTS tests (
+-- Exams Table
+CREATE TABLE IF NOT EXISTS exams (
     id INT PRIMARY KEY AUTO_INCREMENT,
     title VARCHAR(200) NOT NULL,
     description TEXT,
+    duration_minutes INT,
     pdf_content LONGBLOB,
     pdf_filename VARCHAR(255),
     questions_json JSON,
+    status VARCHAR(50) DEFAULT 'draft',
     created_by INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -36,14 +40,15 @@ CREATE TABLE IF NOT EXISTS tests (
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_title (title),
     INDEX idx_created_by (created_by),
-    INDEX idx_created_at (created_at)
+    INDEX idx_created_at (created_at),
+    INDEX idx_status (status)
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Test Attempts Table
-CREATE TABLE IF NOT EXISTS test_attempts (
+-- Exam Attempts Table
+CREATE TABLE IF NOT EXISTS exam_attempts (
     id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
-    test_id INT NOT NULL,
+    exam_id INT NOT NULL,
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP NULL,
     duration_seconds INT,
@@ -53,8 +58,8 @@ CREATE TABLE IF NOT EXISTS test_attempts (
     percentage DECIMAL(5,2),
 
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE,
-    INDEX idx_user_test (user_id, test_id),
+    FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
+    INDEX idx_user_exam (user_id, exam_id),
     INDEX idx_completed_at (completed_at),
     INDEX idx_percentage (percentage)
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -71,7 +76,7 @@ CREATE TABLE IF NOT EXISTS question_results (
     subject VARCHAR(100),
     topic VARCHAR(100),
 
-    FOREIGN KEY (attempt_id) REFERENCES test_attempts(id) ON DELETE CASCADE,
+    FOREIGN KEY (attempt_id) REFERENCES exam_attempts(id) ON DELETE CASCADE,
     INDEX idx_attempt_id (attempt_id),
     INDEX idx_question_id (question_id),
     INDEX idx_subject (subject),
@@ -79,15 +84,10 @@ CREATE TABLE IF NOT EXISTS question_results (
     INDEX idx_is_correct (is_correct)
 ) ENGINE=InnoDB CHARACTER SET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert default admin user
-INSERT INTO users (username, password_hash, email, role) VALUES
-('admin', '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj/RK.s5u.G', 'admin@examlify.com', 'admin')
-ON DUPLICATE KEY UPDATE username=username;
-
 -- Create application user with minimal privileges
 CREATE USER IF NOT EXISTS 'examlify_app'@'%' IDENTIFIED BY 'secure_password';
 GRANT SELECT, INSERT, UPDATE ON examlify_dev.* TO 'examlify_app'@'%';
-GRANT DELETE ON examlify_dev.test_attempts TO 'examlify_app'@'%';
+GRANT DELETE ON examlify_dev.exam_attempts TO 'examlify_app'@'%';
 GRANT DELETE ON examlify_dev.question_results TO 'examlify_app'@'%';
 
 -- Create read-only analytics user

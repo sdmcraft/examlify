@@ -4,8 +4,8 @@ A web-based exam management system that enables automated question extraction fr
 
 ## Features
 
-- **PDF Upload & Processing:** Upload PDF question papers with automated question extraction
-- **LLM Integration:** OpenAI-powered question parsing and structuring
+- **PDF Upload & Processing:** Upload PDF question papers with automated question extraction using LangChain and GPT-4 Vision
+- **LLM Integration:** OpenAI-powered question parsing, diagram extraction, and answer generation
 - **Interactive Exam Interface:** Timer-based exam taking with navigation and progress tracking
 - **Intelligent Scoring:** Automated scoring with subject-wise and topic-wise breakdown
 - **User Management:** Admin and user roles with secure authentication
@@ -25,6 +25,8 @@ A web-based exam management system that enables automated question extraction fr
 
 ### 🚀 Development
 - **[Development Setup Guide](docs/development-setup.md)** - Local development environment with Docker MySQL
+- **[PDF Processing Setup](docs/pdf-processing-setup.md)** - Setup guide for PDF processing with LLM
+- **[PDF Processing Documentation](docs/pdf-processing.md)** - Complete PDF processing documentation
 - **[API Handlers Documentation](backend/app/api/README.md)** - Handler classes architecture and usage
 
 ## Quick Start
@@ -72,8 +74,8 @@ A web-based exam management system that enables automated question extraction fr
 - **Authentication:** JWT tokens with PyJWT
 - **Password Hashing:** Werkzeug security
 - **File Uploads:** python-multipart
-- **LLM Integration:** OpenAI API (planned)
-- **PDF Processing:** PyPDF2 (planned)
+- **LLM Integration:** LangChain with OpenAI GPT-4 Vision
+- **PDF Processing:** pdf2image with poppler-utils
 
 ### Frontend
 - **Core:** HTML5, CSS3, JavaScript (ES6+)
@@ -128,18 +130,20 @@ The main router (`backend/app/api/router.py`) maps HTTP endpoints to appropriate
 - **Authentication** - JWT-based auth with role-based access
 - **Basic CRUD Operations** - Exam, user, and session management
 - **Error Handling** - Comprehensive error handling and validation
+- **PDF Processing** - Complete LLM integration with LangChain and GPT-4 Vision
+- **Question Extraction** - Automated extraction of questions, diagrams, and metadata
+- **Answer Generation** - AI-powered answer and hint generation
 
 ### 🚧 In Progress
-- **PDF Processing** - LLM integration for question extraction
 - **Frontend Interface** - Exam taking and admin interfaces
 - **Advanced Analytics** - Performance tracking and reporting
 
 ### 📋 Planned
-- **LLM Integration** - OpenAI API for question processing
 - **File Upload Validation** - Virus scanning and file validation
 - **Rate Limiting** - API rate limiting and protection
 - **Caching** - Redis caching for performance
 - **Production Deployment** - Docker containers and CI/CD
+- **Batch Processing** - Concurrent processing of multiple PDFs
 
 ## API Documentation
 

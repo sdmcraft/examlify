@@ -2,19 +2,19 @@ openapi: 3.0.3
 info:
   title: examlify API
   description: |
-    Intelligent Test Management System API
+    Intelligent Exam Management System API
 
-    A web-based test management system that enables automated question extraction from PDF documents using LLM technology, provides an interactive web interface for test-taking, and includes comprehensive scoring and analytics capabilities.
+    A web-based exam management system that enables automated question extraction from PDF documents using LLM technology, provides an interactive web interface for exam-taking, and includes comprehensive scoring and analytics capabilities.
 
     ## Features
-    - PDF-based question paper upload and processing
+    - PDF-based exam paper upload and processing
     - LLM-powered question extraction and structuring
-    - Interactive web-based test interface
+    - Interactive web-based exam interface
     - Intelligent hint and solution system
-    - Timer-based test management
+    - Timer-based exam management
     - Automated scoring and analytics
     - Multi-user authentication and administration
-    - Comprehensive reporting and test history
+    - Comprehensive reporting and exam history
   version: 1.0.0
   contact:
     name: examlify Support
@@ -112,37 +112,36 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  # Test Management APIs
-  /api/tests:
+  # Exam Management APIs
+  /api/exams:
     get:
       tags:
-        - Tests
-      summary: List available tests
-      description: Get list of all tests available to the current user
+        - Exams
+      summary: List available exams
+      description: Get list of all exams available to the current user
       parameters:
         - name: status
           in: query
-          description: Filter by test status
+          description: Filter by exam status
           required: false
           schema:
             type: string
-            enum: [active, inactive, draft]
+            enum: [active, inactive, draft, processed, processing_failed]
       responses:
         '200':
-          description: List of tests
+          description: List of exams
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TestSummary'
+                  $ref: '#/components/schemas/ExamSummary'
 
-  /api/tests/upload:
     post:
       tags:
-        - Tests
-      summary: Upload and process PDF
-      description: Upload a PDF file and extract questions using LLM
+        - Exams
+      summary: Create new exam with optional PDF upload
+      description: Create a new exam with optional PDF file upload and processing
       requestBody:
         required: true
         content:
@@ -150,70 +149,72 @@ paths:
             schema:
               type: object
               required:
-                - pdf_file
                 - title
               properties:
-                pdf_file:
-                  type: string
-                  format: binary
-                  description: PDF file to upload
                 title:
                   type: string
-                  description: Test title
+                  description: Exam title
                   example: "Mathematics Midterm Exam"
                 description:
                   type: string
-                  description: Test description
+                  description: Exam description
                   example: "Covers algebra and calculus topics"
                 duration_minutes:
                   type: integer
-                  description: Test duration in minutes (optional)
+                  description: Exam duration in minutes
                   example: 120
+                pdf_file:
+                  type: string
+                  format: binary
+                  description: PDF file to upload and process (optional)
       responses:
         '200':
-          description: PDF processed successfully
+          description: Exam created successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  test_id:
-                    type: string
-                    format: uuid
-                  status:
-                    type: string
-                    enum: [processing, completed, failed]
-                  message:
-                    type: string
-        '400':
-          description: Invalid file or request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                  exam:
+                    $ref: '#/components/schemas/Exam'
+                  pdf_processing:
+                    type: object
+                    description: PDF processing results (if PDF was uploaded)
+                    properties:
+                      status:
+                        type: string
+                        enum: [processed, processing_failed]
+                      message:
+                        type: string
+                      total_questions:
+                        type: integer
+                      error:
+                        type: string
+                        description: Error message if processing failed
 
-  /api/tests/{test_id}:
+
+
+  /api/exams/{exam_id}:
     get:
       tags:
-        - Tests
-      summary: Get test details
-      description: Retrieve detailed information about a specific test
+        - Exams
+      summary: Get exam details
+      description: Retrieve detailed information about a specific exam
       parameters:
-        - name: test_id
+        - name: exam_id
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       responses:
         '200':
-          description: Test details
+          description: Exam details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Test'
+                $ref: '#/components/schemas/Exam'
         '404':
-          description: Test not found
+          description: Exam not found
           content:
             application/json:
               schema:
@@ -221,16 +222,15 @@ paths:
 
     put:
       tags:
-        - Tests
-      summary: Update test
-      description: Update test metadata (admin only)
+        - Exams
+      summary: Update exam
+      description: Update exam metadata
       parameters:
-        - name: test_id
+        - name: exam_id
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       requestBody:
         required: true
         content:
@@ -242,75 +242,57 @@ paths:
                   type: string
                 description:
                   type: string
-                duration_minutes:
-                  type: integer
-                status:
-                  type: string
-                  enum: [active, inactive, draft]
       responses:
         '200':
-          description: Test updated successfully
+          description: Exam updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Test'
+                $ref: '#/components/schemas/Exam'
 
     delete:
       tags:
-        - Tests
-      summary: Delete test
-      description: Delete a test (admin only)
+        - Exams
+      summary: Delete exam
+      description: Delete an exam
       parameters:
-        - name: test_id
+        - name: exam_id
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       responses:
         '200':
-          description: Test deleted successfully
+          description: Exam deleted successfully
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SuccessResponse'
 
-  /api/tests/{test_id}/start:
+  /api/exams/{exam_id}/start:
     post:
       tags:
-        - Test Sessions
-      summary: Start test session
-      description: Initialize a new test attempt session
+        - Exam Sessions
+      summary: Start exam session
+      description: Initialize a new exam attempt session
       parameters:
-        - name: test_id
+        - name: exam_id
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                duration_minutes:
-                  type: integer
-                  description: Override test duration (optional)
+            type: integer
       responses:
         '200':
-          description: Test session started
+          description: Exam session started
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   session_id:
-                    type: string
-                    format: uuid
-                  test:
-                    $ref: '#/components/schemas/Test'
+                    type: integer
+                  exam:
+                    $ref: '#/components/schemas/Exam'
                   started_at:
                     type: string
                     format: date-time
@@ -318,14 +300,11 @@ paths:
                     type: string
                     format: date-time
 
-  # Test Session APIs
-
-
-
+  # Exam Session APIs
   /api/sessions/{session_id}/hint/{question_id}:
     post:
       tags:
-        - Test Sessions
+        - Exam Sessions
       summary: Request hint
       description: Get hint for a specific question
       parameters:
@@ -333,14 +312,12 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
         - name: question_id
           in: path
           required: true
           schema:
             type: string
-            format: uuid
       responses:
         '200':
           description: Hint provided
@@ -357,7 +334,7 @@ paths:
   /api/sessions/{session_id}/solution/{question_id}:
     post:
       tags:
-        - Test Sessions
+        - Exam Sessions
       summary: Request solution
       description: Get detailed solution for a specific question
       parameters:
@@ -365,14 +342,12 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
         - name: question_id
           in: path
           required: true
           schema:
             type: string
-            format: uuid
       responses:
         '200':
           description: Solution provided
@@ -388,19 +363,18 @@ paths:
                   used_solution:
                     type: boolean
 
-  /api/tests/{test_id}/submit:
+  /api/exams/{exam_id}/submit:
     post:
       tags:
-        - Test Sessions
-      summary: Submit test
-      description: Submit completed test with all answers and calculate results
+        - Exam Sessions
+      summary: Submit exam
+      description: Submit completed exam with all answers and calculate results
       parameters:
-        - name: test_id
+        - name: exam_id
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       requestBody:
         required: true
         content:
@@ -412,24 +386,22 @@ paths:
                 - answers
               properties:
                 session_id:
-                  type: string
-                  format: uuid
+                  type: integer
                 answers:
                   type: object
-                  description: All answers for the test (question_id -> answer_option_id mapping)
+                  description: All answers for the exam (question_id -> answer_option_id mapping)
                   additionalProperties:
                     type: string
       responses:
         '200':
-          description: Test submitted successfully
+          description: Exam submitted successfully
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   attempt_id:
-                    type: string
-                    format: uuid
+                    type: integer
                   score:
                     type: number
                   percentage:
@@ -444,37 +416,36 @@ paths:
       tags:
         - Results
       summary: Get detailed results
-      description: Get comprehensive test results and analysis
+      description: Get comprehensive exam results and analysis
       parameters:
         - name: attempt_id
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       responses:
         '200':
-          description: Detailed test results
+          description: Detailed exam results
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TestResult'
+                $ref: '#/components/schemas/ExamResult'
 
   /api/results/history:
     get:
       tags:
         - Results
-      summary: Get test history
-      description: Get user's test attempt history
+      summary: Get exam history
+      description: Get user's exam attempt history
       responses:
         '200':
-          description: Test history
+          description: Exam history
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TestAttemptSummary'
+                  $ref: '#/components/schemas/ExamAttemptSummary'
 
   /api/results/summary:
     get:
@@ -489,8 +460,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PerformanceSummary'
-
-
 
   # User Management APIs
   /api/users/profile:
@@ -567,24 +536,23 @@ paths:
     get:
       tags:
         - Users
-      summary: Get user test history
-      description: Get test history for a specific user (admin only)
+      summary: Get user exam history
+      description: Get exam history for a specific user (admin only)
       parameters:
         - name: user_id
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       responses:
         '200':
-          description: User test history
+          description: User exam history
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/TestAttemptSummary'
+                  $ref: '#/components/schemas/ExamAttemptSummary'
 
   # Admin APIs
   /api/admin/users:
@@ -600,7 +568,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [admin, user]
+            example: "admin"
       responses:
         '200':
           description: List of users
@@ -626,7 +594,6 @@ paths:
                 - username
                 - email
                 - password
-                - role
               properties:
                 username:
                   type: string
@@ -642,7 +609,8 @@ paths:
                   type: string
                 role:
                   type: string
-                  enum: [admin, user]
+                  description: User role (admin or user)
+                  example: "user"
       responses:
         '201':
           description: User created successfully
@@ -662,8 +630,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       requestBody:
         required: true
         content:
@@ -682,10 +649,8 @@ paths:
                   type: string
                 role:
                   type: string
-                  enum: [admin, user]
-                status:
-                  type: string
-                  enum: [active, inactive]
+                  description: User role (admin or user)
+                  example: "user"
       responses:
         '200':
           description: User updated successfully
@@ -704,8 +669,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            format: uuid
+            type: integer
       responses:
         '200':
           description: User deleted successfully
@@ -715,133 +679,6 @@ paths:
                 $ref: '#/components/schemas/SuccessResponse'
 
 
-
-  # PDF Processing APIs
-  /api/pdf/process:
-    post:
-      tags:
-        - PDF Processing
-      summary: Process PDF with LLM
-      description: Process a PDF file and extract questions using LLM
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required:
-                - pdf_file
-              properties:
-                pdf_file:
-                  type: string
-                  format: binary
-                  description: PDF file to process
-      responses:
-        '200':
-          description: PDF processing initiated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  pdf_id:
-                    type: string
-                    format: uuid
-                  status:
-                    type: string
-                    enum: [processing, completed, failed]
-                  message:
-                    type: string
-
-  /api/pdf/{pdf_id}/status:
-    get:
-      tags:
-        - PDF Processing
-      summary: Check processing status
-      description: Check the status of PDF processing
-      parameters:
-        - name: pdf_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Processing status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [processing, completed, failed]
-                  progress:
-                    type: number
-                    minimum: 0
-                    maximum: 100
-                  message:
-                    type: string
-
-  /api/pdf/{pdf_id}/questions:
-    get:
-      tags:
-        - PDF Processing
-      summary: Get extracted questions
-      description: Get questions extracted from processed PDF
-      parameters:
-        - name: pdf_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Extracted questions
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  questions:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Question'
-
-    put:
-      tags:
-        - PDF Processing
-      summary: Update extracted questions
-      description: Update or correct extracted questions
-      parameters:
-        - name: pdf_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - questions
-              properties:
-                questions:
-                  type: array
-                  items:
-                    $ref: '#/components/schemas/Question'
-      responses:
-        '200':
-          description: Questions updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SuccessResponse'
 
   # System Health APIs
   /api/health:
@@ -922,8 +759,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemSettings'
 
-
-
 components:
   securitySchemes:
     BearerAuth:
@@ -952,8 +787,7 @@ components:
       type: object
       properties:
         id:
-          type: string
-          format: uuid
+          type: integer
         username:
           type: string
         email:
@@ -965,10 +799,8 @@ components:
           type: string
         role:
           type: string
-          enum: [admin, user]
-        status:
-          type: string
-          enum: [active, inactive]
+          description: User role (admin or user)
+          example: "admin"
         created_at:
           type: string
           format: date-time
@@ -976,59 +808,52 @@ components:
           type: string
           format: date-time
 
-    # Test
-    Test:
+    # Exam
+    Exam:
       type: object
       properties:
         id:
-          type: string
-          format: uuid
+          type: integer
         title:
           type: string
         description:
           type: string
         duration_minutes:
           type: integer
-        total_questions:
-          type: integer
-        total_marks:
-          type: number
+          description: Exam duration in minutes
+        pdf_filename:
+          type: string
+        pdf_content:
+          type: string
+        questions_json:
+          type: object
         status:
           type: string
-          enum: [active, inactive, draft]
+          enum: [draft, processed, processing_failed]
         created_by:
-          type: string
-          format: uuid
+          type: integer
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-        questions:
-          type: array
-          items:
-            $ref: '#/components/schemas/Question'
 
-    TestSummary:
+    ExamSummary:
       type: object
       properties:
         id:
-          type: string
-          format: uuid
+          type: integer
         title:
           type: string
         description:
           type: string
         duration_minutes:
           type: integer
-        total_questions:
-          type: integer
-        total_marks:
-          type: number
+          description: Exam duration in minutes
         status:
           type: string
-          enum: [active, inactive, draft]
+          enum: [draft, processed, processing_failed]
         created_at:
           type: string
           format: date-time
@@ -1039,7 +864,6 @@ components:
       properties:
         id:
           type: string
-          format: uuid
         question_text:
           type: string
         question_type:
@@ -1074,19 +898,16 @@ components:
         option_text:
           type: string
 
-    # Test Session
-    TestSession:
+    # Exam Session
+    ExamSession:
       type: object
       properties:
         id:
-          type: string
-          format: uuid
-        test_id:
-          type: string
-          format: uuid
+          type: integer
+        exam_id:
+          type: integer
         user_id:
-          type: string
-          format: uuid
+          type: integer
         started_at:
           type: string
           format: date-time
@@ -1103,19 +924,16 @@ components:
         total_questions:
           type: integer
 
-    # Test Results
-    TestResult:
+    # Exam Results
+    ExamResult:
       type: object
       properties:
         attempt_id:
-          type: string
-          format: uuid
-        test_id:
-          type: string
-          format: uuid
+          type: integer
+        exam_id:
+          type: integer
         user_id:
-          type: string
-          format: uuid
+          type: integer
         started_at:
           type: string
           format: date-time
@@ -1149,7 +967,6 @@ components:
       properties:
         question_id:
           type: string
-          format: uuid
         user_answer:
           type: string
         correct_answer:
@@ -1163,13 +980,12 @@ components:
         used_solution:
           type: boolean
 
-    TestAttemptSummary:
+    ExamAttemptSummary:
       type: object
       properties:
         attempt_id:
-          type: string
-          format: uuid
-        test_title:
+          type: integer
+        exam_title:
           type: string
         started_at:
           type: string
@@ -1188,7 +1004,7 @@ components:
     PerformanceSummary:
       type: object
       properties:
-        total_tests:
+        total_exams:
           type: integer
         average_score:
           type: number
@@ -1203,7 +1019,7 @@ components:
           additionalProperties:
             type: object
             properties:
-              tests_attempted:
+              exams_attempted:
                 type: integer
               average_score:
                 type: number
@@ -1220,8 +1036,6 @@ components:
               average_percentage:
                 type: number
 
-
-
     # System Settings
     SystemSettings:
       type: object
@@ -1237,18 +1051,16 @@ components:
         session_timeout_minutes:
           type: integer
           description: Session timeout in minutes
-        max_questions_per_test:
+        max_questions_per_exam:
           type: integer
-          description: Maximum questions per test
+          description: Maximum questions per exam
         llm_provider:
           type: string
           enum: [openai, anthropic]
           description: LLM provider to use
-        default_test_duration:
+        default_exam_duration:
           type: integer
-          description: Default test duration in minutes
-
-
+          description: Default exam duration in minutes
 
     # Common
     SuccessResponse:
@@ -1278,25 +1090,21 @@ components:
           format: date-time
         request_id:
           type: string
-          format: uuid
-
-
 
 tags:
   - name: Authentication
     description: User authentication and session management
-  - name: Tests
-    description: Test management and operations
-  - name: Test Sessions
-    description: Test taking and session management
+  - name: Exams
+    description: Exam management and operations
+  - name: Exam Sessions
+    description: Exam taking and session management
   - name: Results
-    description: Test results and analytics
+    description: Exam results and analytics
   - name: Users
     description: User profile and account management
   - name: Admin
     description: Administrative operations
-  - name: PDF Processing
-    description: PDF upload and question extraction
+
   - name: Health
     description: System health and monitoring
   - name: Configuration

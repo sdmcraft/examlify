@@ -1,12 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, Enum, Index
+from sqlalchemy import Column, Integer, String, DateTime, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-import enum
 from ..database import Base
-
-class UserRole(enum.Enum):
-    ADMIN = "admin"
-    USER = "user"
 
 class User(Base):
     __tablename__ = "users"
@@ -17,7 +12,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     first_name = Column(String(50))
     last_name = Column(String(50))
-    role = Column(Enum(UserRole), default=UserRole.USER)
+    role = Column(String(10), default="user")  # Simple string: "admin" or "user"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
