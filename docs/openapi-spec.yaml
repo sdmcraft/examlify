@@ -7,7 +7,7 @@ info:
     A web-based exam management system that enables automated question extraction from PDF documents using LLM technology, provides an interactive web interface for exam-taking, and includes comprehensive scoring and analytics capabilities.
 
     ## Features
-    - PDF-based exam paper upload and processing
+    - PDF URL-based exam paper processing
     - LLM-powered question extraction and structuring
     - Interactive web-based exam interface
     - Intelligent hint and solution system
@@ -140,16 +140,17 @@ paths:
     post:
       tags:
         - Exams
-      summary: Create new exam with optional PDF upload
-      description: Create a new exam with optional PDF file upload and processing
+      summary: Create new exam with PDF URL
+      description: Create a new exam by providing a PDF URL for processing
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
               type: object
               required:
                 - title
+                - pdf_url
               properties:
                 title:
                   type: string
@@ -163,10 +164,11 @@ paths:
                   type: integer
                   description: Exam duration in minutes
                   example: 120
-                pdf_file:
+                pdf_url:
                   type: string
-                  format: binary
-                  description: PDF file to upload and process (optional)
+                  format: uri
+                  description: URL to the PDF file to process
+                  example: "https://example.com/exam-papers/math-midterm.pdf"
       responses:
         '200':
           description: Exam created successfully
@@ -179,7 +181,7 @@ paths:
                     $ref: '#/components/schemas/Exam'
                   pdf_processing:
                     type: object
-                    description: PDF processing results (if PDF was uploaded)
+                    description: PDF processing results
                     properties:
                       status:
                         type: string
@@ -191,8 +193,9 @@ paths:
                       error:
                         type: string
                         description: Error message if processing failed
-
-
+                      pdf_url:
+                        type: string
+                        description: The original PDF URL that was processed
 
   /api/exams/{exam_id}:
     get:
@@ -821,12 +824,13 @@ components:
         duration_minutes:
           type: integer
           description: Exam duration in minutes
-        pdf_filename:
+        pdf_url:
           type: string
-        pdf_content:
-          type: string
+          format: uri
+          description: URL to the original PDF file
         questions_json:
           type: object
+          description: Processed questions and metadata from the PDF
         status:
           type: string
           enum: [draft, processed, processing_failed]
@@ -889,6 +893,18 @@ components:
         negative_marks:
           type: number
           default: -1
+        diagrams:
+          type: array
+          description: Array of diagrams/images associated with the question
+          items:
+            type: object
+            properties:
+              base64_image:
+                type: string
+                description: Base64 encoded image data
+              description:
+                type: string
+                description: Description of the diagram
 
     QuestionOption:
       type: object
@@ -1040,14 +1056,14 @@ components:
     SystemSettings:
       type: object
       properties:
-        max_file_size_mb:
+        max_pdf_url_length:
           type: integer
-          description: Maximum PDF file size in MB
-        allowed_file_types:
+          description: Maximum length for PDF URLs
+        allowed_url_schemes:
           type: array
           items:
             type: string
-          description: Allowed file types for upload
+          description: Allowed URL schemes (http, https)
         session_timeout_minutes:
           type: integer
           description: Session timeout in minutes

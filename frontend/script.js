@@ -1,310 +1,350 @@
-const API_BASE = 'http://localhost:8000';
+// Global variables
+let currentToken = null;
+let currentUser = null;
+
+// API base URL
+const API_BASE_URL = 'http://localhost:8000/api';
 
 // DOM elements
 const loginSection = document.getElementById('login-section');
-const dashboardSection = document.getElementById('dashboard-section');
-const loginForm = document.getElementById('loginForm');
-const loginBtn = document.getElementById('loginBtn');
-const dashboardBtn = document.getElementById('dashboardBtn');
-const logoutBtn = document.getElementById('logoutBtn');
+const createExamSection = document.getElementById('create-exam-section');
+const viewExamSection = document.getElementById('view-exam-section');
+const examDisplaySection = document.getElementById('exam-display-section');
 
-// Test API connection
-async function testConnection() {
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Login form
+    document.getElementById('login-form').addEventListener('submit', handleLogin);
+
+    // Create exam form
+    document.getElementById('create-exam-form').addEventListener('submit', handleCreateExam);
+
+    // View exam form
+    document.getElementById('view-exam-form').addEventListener('submit', handleViewExam);
+
+    // Check if user is already logged in
+    checkAuthStatus();
+});
+
+// Authentication functions
+async function handleLogin(event) {
+    event.preventDefault();
+
+    const formData = new FormData(event.target);
+    const username = formData.get('username');
+    const password = formData.get('password');
+
     try {
-        const response = await fetch(`${API_BASE}/health`);
-        const data = await response.json();
-        console.log('API Connection:', data);
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            currentToken = data.access_token;
+            currentUser = data.user;
+
+            // Store token in localStorage
+            localStorage.setItem('jwt_token', currentToken);
+            localStorage.setItem('user', JSON.stringify(currentUser));
+
+            showMessage('login-message', 'Login successful!', 'success');
+            showSection('create-exam-section');
+
+            // Update navigation
+            updateNavigation();
+        } else {
+            const errorData = await response.json();
+            showMessage('login-message', `Login failed: ${errorData.detail}`, 'error');
+        }
     } catch (error) {
-        console.error('API Connection failed:', error);
+        showMessage('login-message', `Login error: ${error.message}`, 'error');
     }
 }
 
-// Initialize app
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('examForm');
-    const loading = document.getElementById('loading');
-    const error = document.getElementById('error');
-    const errorMessage = document.getElementById('errorMessage');
-    const formattedExam = document.getElementById('formattedExam');
+function checkAuthStatus() {
+    const token = localStorage.getItem('jwt_token');
+    const user = localStorage.getItem('user');
 
-    // API base URL - change this to match your backend URL
-    const API_BASE_URL = 'http://localhost:8000';
+    if (token && user) {
+        currentToken = token;
+        currentUser = JSON.parse(user);
+        showSection('create-exam-section');
+        updateNavigation();
+    }
+}
 
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
+function logout() {
+    currentToken = null;
+    currentUser = null;
+    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('user');
 
-        const examId = document.getElementById('examId').value;
-        const jwtToken = document.getElementById('jwtToken').value.trim();
+    showSection('login-section');
+    updateNavigation();
 
-        if (!examId || !jwtToken) {
-            showError('Please fill in all fields');
-            return;
-        }
+    // Clear any displayed data
+    document.getElementById('exam-display-section').style.display = 'none';
+}
 
-        // Show loading, hide other sections
-        showLoading();
-        hideError();
-        hideFormattedExam();
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/exams/${examId}`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${jwtToken}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+function updateNavigation() {
+    const navTabs = document.querySelectorAll('.nav-tab');
+    navTabs.forEach(tab => {
+        if (currentToken) {
+            tab.style.display = 'inline-block';
+        } else {
+            if (tab.textContent === 'Logout') {
+                tab.style.display = 'none';
             }
-
-            const data = await response.json();
-            displayFormattedExam(data);
-
-        } catch (err) {
-            showError(`Failed to fetch exam data: ${err.message}`);
-        } finally {
-            hideLoading();
         }
     });
+}
 
-    // Display formatted exam
-    function displayFormattedExam(data) {
-        // Extract metadata
-        const metadata = data.questions_json?.metadata || {};
-        const questions = data.questions_json?.questions || [];
+// Exam creation functions
+async function handleCreateExam(event) {
+    event.preventDefault();
 
-        // Update exam header
-        document.getElementById('examTitle').textContent = metadata.title || data.title || 'Untitled Exam';
+    const formData = new FormData(event.target);
+    const examData = {
+        title: formData.get('title'),
+        description: formData.get('description') || null,
+        duration_minutes: formData.get('duration_minutes') ? parseInt(formData.get('duration_minutes')) : null,
+        pdf_url: formData.get('pdf_url')
+    };
 
-        const examSubject = document.getElementById('examSubject');
-        const examTopic = document.getElementById('examTopic');
-        const examDuration = document.getElementById('examDuration');
-        const examDifficulty = document.getElementById('examDifficulty');
+    try {
+        const response = await fetch(`${API_BASE_URL}/exams`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentToken}`
+            },
+            body: JSON.stringify(examData)
+        });
 
-        examSubject.textContent = metadata.subject ? `Subject: ${metadata.subject}` : '';
-        examTopic.textContent = metadata.topic ? `Topic: ${metadata.topic}` : '';
-        examDuration.textContent = metadata.duration_minutes ? `Duration: ${metadata.duration_minutes} min` : '';
-        examDifficulty.textContent = metadata.difficulty_level ? `Difficulty: ${metadata.difficulty_level}` : '';
+        if (response.ok) {
+            const exam = await response.json();
+            showMessage('create-exam-message', `Exam created successfully! Exam ID: ${exam.id}`, 'success');
 
-        // Clear previous questions
-        const questionsContainer = document.getElementById('questionsContainer');
-        questionsContainer.innerHTML = '';
+            // Auto-fill the view exam form
+            document.getElementById('exam-id').value = exam.id;
+            document.getElementById('jwt-token').value = currentToken;
 
-        // Create question cards
+            // Show the exam data if it was processed
+            if (exam.processed_data) {
+                displayExam(exam.processed_data);
+            }
+        } else {
+            const errorData = await response.json();
+            showMessage('create-exam-message', `Failed to create exam: ${errorData.detail}`, 'error');
+        }
+    } catch (error) {
+        showMessage('create-exam-message', `Error creating exam: ${error.message}`, 'error');
+    }
+}
+
+// Exam viewing functions
+async function handleViewExam(event) {
+    event.preventDefault();
+
+    const formData = new FormData(event.target);
+    const examId = formData.get('exam_id');
+    const jwtToken = formData.get('jwt_token');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/exams/${examId}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${jwtToken}`
+            }
+        });
+
+        if (response.ok) {
+            const exam = await response.json();
+
+            if (exam.processed_data) {
+                displayExam(exam.processed_data);
+            } else {
+                showMessage('view-exam-message', 'No processed data found for this exam', 'warning');
+            }
+        } else {
+            const errorData = await response.json();
+            showMessage('view-exam-message', `Failed to fetch exam: ${errorData.detail}`, 'error');
+        }
+    } catch (error) {
+        showMessage('view-exam-message', `Error fetching exam: ${error.message}`, 'error');
+    }
+}
+
+// Display functions
+function displayExam(examData) {
+    const metadata = examData.metadata;
+    const questions = examData.questions;
+
+    // Update exam header
+    document.getElementById('exam-title-display').textContent = metadata.title || 'Untitled Exam';
+    document.getElementById('exam-subject').textContent = metadata.subject ? `Subject: ${metadata.subject}` : '';
+    document.getElementById('exam-topic').textContent = metadata.topic ? `Topic: ${metadata.topic}` : '';
+    document.getElementById('exam-duration-display').textContent = metadata.duration_minutes ? `Duration: ${metadata.duration_minutes} minutes` : '';
+    document.getElementById('exam-difficulty').textContent = metadata.difficulty_level ? `Difficulty: ${metadata.difficulty_level}` : '';
+
+    // Update PDF source link
+    const pdfLink = document.getElementById('pdf-source-link');
+    if (metadata.pdf_url) {
+        pdfLink.href = metadata.pdf_url;
+        pdfLink.style.display = 'inline';
+    } else {
+        pdfLink.style.display = 'none';
+    }
+
+    // Display questions
+    const questionsContainer = document.getElementById('questions-container');
+    questionsContainer.innerHTML = '';
+
+    if (questions && questions.length > 0) {
         questions.forEach((question, index) => {
             const questionCard = createQuestionCard(question, index + 1);
             questionsContainer.appendChild(questionCard);
         });
-
-        // Show formatted exam
-        showFormattedExam();
+    } else {
+        questionsContainer.innerHTML = '<p class="no-questions">No questions found in this exam.</p>';
     }
 
-    // Create individual question card
-    function createQuestionCard(question, questionNumber) {
-        const card = document.createElement('div');
-        card.className = 'question-card';
+    // Show exam display section
+    showSection('exam-display-section');
+}
 
-        const confidenceClass = getConfidenceClass(question.confidence);
-        const confidenceText = question.confidence || 'UNSURE';
+// Create individual question card
+function createQuestionCard(question, questionNumber) {
+    const card = document.createElement('div');
+    card.className = 'question-card';
 
-        // Generate diagrams HTML if diagrams exist
-        const diagramsHTML = question.diagrams && question.diagrams.length > 0 ?
-            question.diagrams.map((diagram, index) => `
-                <div class="question-image">
-                    <img src="data:image/png;base64,${diagram.base64_image}"
-                         alt="Question ${questionNumber} diagram ${index + 1}"
-                         class="question-img"
-                         title="${diagram.description || ''}">
-                </div>
-            `).join('') : '';
+    const confidenceClass = getConfidenceClass(question.confidence);
+    const confidenceText = question.confidence || 'UNSURE';
 
-        card.innerHTML = `
-            <div class="question-header">
-                <span class="question-number">${questionNumber}</span>
-                <span class="question-confidence ${confidenceClass}">${confidenceText}</span>
-            </div>
+    card.innerHTML = `
+        <div class="question-header">
+            <span class="question-number">${questionNumber}</span>
+            <span class="question-confidence ${confidenceClass}">${confidenceText}</span>
+        </div>
 
-            <div class="question-text">${question.question_text}</div>
+        <div class="question-text">${question.question_text}</div>
 
-            ${diagramsHTML}
+        ${question.options && question.options.length > 0 ? `
+            <ul class="options-list">
+                ${question.options.map((option, optionIndex) => {
+                    const isCorrect = question.correct_answer &&
+                                     option.startsWith(question.correct_answer + '.');
+                    return `<li class="option-item ${isCorrect ? 'correct-answer' : ''}">${option}</li>`;
+                }).join('')}
+            </ul>
+        ` : ''}
 
-            ${question.options && question.options.length > 0 ? `
-                <ul class="options-list">
-                    ${question.options.map((option, optionIndex) => {
-                        const isCorrect = question.correct_answer &&
-                                         option.startsWith(question.correct_answer + '.');
-                        return `<li class="option-item ${isCorrect ? 'correct-answer' : ''}">${option}</li>`;
-                    }).join('')}
-                </ul>
-            ` : ''}
-
-            <div class="question-actions">
-                ${question.hint ? `
-                    <button class="btn btn-small" onclick="toggleHint(${questionNumber})">
-                        Show Hint
-                    </button>
-                ` : ''}
-
-                ${question.explanation ? `
-                    <button class="btn btn-small" onclick="toggleSolution(${questionNumber})">
-                        Show Solution
-                    </button>
-                ` : ''}
-            </div>
-
+        <div class="question-actions">
             ${question.hint ? `
-                <div id="hint-${questionNumber}" class="hint-section">
-                    <div class="hint-title">💡 Hint</div>
-                    <div class="hint-content">${question.hint}</div>
-                </div>
+                <button class="btn btn-small" onclick="toggleHint(${questionNumber})">
+                    Show Hint
+                </button>
             ` : ''}
 
             ${question.explanation ? `
-                <div id="solution-${questionNumber}" class="solution-section">
-                    <div class="solution-title">📝 Solution</div>
-                    <div class="solution-content">${question.explanation}</div>
-                </div>
+                <button class="btn btn-small" onclick="toggleSolution(${questionNumber})">
+                    Show Solution
+                </button>
             ` : ''}
-        `;
+        </div>
 
-        return card;
+        ${question.hint ? `
+            <div id="hint-${questionNumber}" class="hint-section">
+                <div class="hint-title">💡 Hint</div>
+                <div class="hint-content">${question.hint}</div>
+            </div>
+        ` : ''}
+
+        ${question.explanation ? `
+            <div id="solution-${questionNumber}" class="solution-section">
+                <div class="solution-title">📝 Solution</div>
+                <div class="solution-content">${question.explanation}</div>
+            </div>
+        ` : ''}
+    `;
+
+    return card;
+}
+
+// Utility functions
+function getConfidenceClass(confidence) {
+    switch (confidence?.toUpperCase()) {
+        case 'HIGH': return 'confidence-high';
+        case 'MEDIUM': return 'confidence-medium';
+        case 'LOW': return 'confidence-low';
+        default: return 'confidence-unsure';
     }
+}
 
-    // Get confidence class for styling
-    function getConfidenceClass(confidence) {
-        switch (confidence?.toUpperCase()) {
-            case 'HIGH': return 'confidence-high';
-            case 'MEDIUM': return 'confidence-medium';
-            case 'LOW': return 'confidence-low';
-            case 'UNSURE':
-            default: return 'confidence-unsure';
-        }
+function toggleHint(questionNumber) {
+    const hintSection = document.getElementById(`hint-${questionNumber}`);
+    const button = event.target;
+
+    if (hintSection.style.display === 'none' || !hintSection.style.display) {
+        hintSection.style.display = 'block';
+        button.textContent = 'Hide Hint';
+    } else {
+        hintSection.style.display = 'none';
+        button.textContent = 'Show Hint';
     }
+}
 
-    // Toggle hint visibility
-    window.toggleHint = function(questionNumber) {
-        const hintSection = document.getElementById(`hint-${questionNumber}`);
-        const button = hintSection.previousElementSibling.querySelector('button');
+function toggleSolution(questionNumber) {
+    const solutionSection = document.getElementById(`solution-${questionNumber}`);
+    const button = event.target;
 
-        if (hintSection.classList.contains('show')) {
-            hintSection.classList.remove('show');
-            button.textContent = 'Show Hint';
-        } else {
-            hintSection.classList.add('show');
-            button.textContent = 'Hide Hint';
-        }
-    };
-
-    // Toggle solution visibility
-    window.toggleSolution = function(questionNumber) {
-        const solutionSection = document.getElementById(`solution-${questionNumber}`);
-        const buttons = solutionSection.previousElementSibling.querySelectorAll('button');
-        const solutionButton = buttons[buttons.length - 1]; // Last button is solution button
-
-        if (solutionSection.classList.contains('show')) {
-            solutionSection.classList.remove('show');
-            solutionButton.textContent = 'Show Solution';
-        } else {
-            solutionSection.classList.add('show');
-            solutionButton.textContent = 'Hide Solution';
-        }
-    };
-
-    // Helper functions
-    function showLoading() {
-        loading.classList.remove('hidden');
+    if (solutionSection.style.display === 'none' || !solutionSection.style.display) {
+        solutionSection.style.display = 'block';
+        button.textContent = 'Hide Solution';
+    } else {
+        solutionSection.style.display = 'none';
+        button.textContent = 'Show Solution';
     }
+}
 
-    function hideLoading() {
-        loading.classList.add('hidden');
-    }
-
-    function showError(message) {
-        errorMessage.textContent = message;
-        error.classList.remove('hidden');
-    }
-
-    function hideError() {
-        error.classList.add('hidden');
-    }
-
-    function showFormattedExam() {
-        formattedExam.classList.remove('hidden');
-        // Scroll to formatted exam
-        formattedExam.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function hideFormattedExam() {
-        formattedExam.classList.add('hidden');
-    }
-
-    // Auto-resize textarea
-    const jwtTextarea = document.getElementById('jwtToken');
-    jwtTextarea.addEventListener('input', function() {
-        this.style.height = 'auto';
-        this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+function showSection(sectionId) {
+    // Hide all sections
+    document.querySelectorAll('.section').forEach(section => {
+        section.style.display = 'none';
     });
 
-    // Add some helpful instructions
-    const instructions = document.createElement('div');
-    instructions.innerHTML = `
-        <div style="background: #e3f2fd; border: 1px solid #2196f3; border-radius: 8px; padding: 15px; margin-top: 20px; font-size: 0.9rem;">
-            <h4 style="margin: 0 0 10px 0; color: #1976d2;">How to get your JWT token:</h4>
-            <ol style="margin: 0; padding-left: 20px; color: #424242;">
-                <li>Go to <a href="http://localhost:8000/docs" target="_blank">http://localhost:8000/docs</a></li>
-                <li>Click on "Authorize" button at the top</li>
-                <li>Enter your JWT token in the format: <code>Bearer your_token_here</code></li>
-                <li>Or login via <code>POST /api/auth/login</code> to get a token</li>
-            </ol>
-        </div>
-    `;
-    document.querySelector('.container').appendChild(instructions);
-});
+    // Show the requested section
+    document.getElementById(sectionId).style.display = 'block';
 
-// Simple navigation (placeholder for now)
-loginBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    showLogin();
-});
+    // Update navigation tabs
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
 
-dashboardBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    showDashboard();
-});
+    // Find and activate the corresponding tab
+    const tabMap = {
+        'create-exam-section': 0,
+        'view-exam-section': 1
+    };
 
-logoutBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    logout();
-});
-
-function showLogin() {
-    loginSection.style.display = 'block';
-    dashboardSection.style.display = 'none';
-    loginBtn.style.display = 'none';
-    dashboardBtn.style.display = 'none';
-    logoutBtn.style.display = 'none';
+    if (tabMap[sectionId] !== undefined) {
+        document.querySelectorAll('.nav-tab')[tabMap[sectionId]].classList.add('active');
+    }
 }
 
-function showDashboard() {
-    loginSection.style.display = 'none';
-    dashboardSection.style.display = 'block';
-    loginBtn.style.display = 'none';
-    dashboardBtn.style.display = 'inline';
-    logoutBtn.style.display = 'inline';
-}
+function showMessage(elementId, message, type) {
+    const element = document.getElementById(elementId);
+    element.textContent = message;
+    element.className = `message ${type}`;
 
-function logout() {
-    showLogin();
-    loginBtn.style.display = 'inline';
+    // Clear message after 5 seconds
+    setTimeout(() => {
+        element.textContent = '';
+        element.className = 'message';
+    }, 5000);
 }
-
-// Form submission (placeholder)
-loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    alert('Login functionality will be implemented in Phase 1');
-    showDashboard();
-});

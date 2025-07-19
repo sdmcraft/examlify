@@ -3,54 +3,107 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exam Data Fetcher</title>
+    <title>ExamLify - PDF to Exam Converter</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
-        <h1>Exam Data Fetcher</h1>
-        <p>Enter an exam ID and JWT token to fetch the exam data</p>
+        <header>
+            <h1>ExamLify</h1>
+            <p>Convert PDFs to interactive exams using AI</p>
+        </header>
 
-        <form id="examForm" class="form">
-            <div class="form-group">
-                <label for="examId">Exam ID:</label>
-                <input type="number" id="examId" name="examId" required placeholder="Enter exam ID">
-            </div>
+        <main>
+            <!-- Login Section -->
+            <section id="login-section" class="section">
+                <h2>Login</h2>
+                <form id="login-form" class="form">
+                    <div class="form-group">
+                        <label for="username">Username:</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password:</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </form>
+                <div id="login-message" class="message"></div>
+            </section>
 
-            <div class="form-group">
-                <label for="jwtToken">JWT Token:</label>
-                <textarea id="jwtToken" name="jwtToken" required placeholder="Enter your JWT token" rows="3"></textarea>
-            </div>
+            <!-- Create Exam Section -->
+            <section id="create-exam-section" class="section" style="display: none;">
+                <h2>Create New Exam</h2>
+                <form id="create-exam-form" class="form">
+                    <div class="form-group">
+                        <label for="exam-title">Exam Title:</label>
+                        <input type="text" id="exam-title" name="title" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="exam-description">Description (optional):</label>
+                        <textarea id="exam-description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="exam-duration">Duration (minutes, optional):</label>
+                        <input type="number" id="exam-duration" name="duration_minutes" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="pdf-url">PDF URL:</label>
+                        <input type="url" id="pdf-url" name="pdf_url" required
+                               placeholder="https://example.com/exam.pdf">
+                        <small>Enter a direct link to a PDF file</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Exam</button>
+                </form>
+                <div id="create-exam-message" class="message"></div>
+            </section>
 
-            <button type="submit" class="btn">Fetch Exam Data</button>
-        </form>
+            <!-- View Exam Section -->
+            <section id="view-exam-section" class="section" style="display: none;">
+                <h2>View Exam</h2>
+                <form id="view-exam-form" class="form">
+                    <div class="form-group">
+                        <label for="exam-id">Exam ID:</label>
+                        <input type="number" id="exam-id" name="exam_id" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="jwt-token">JWT Token:</label>
+                        <input type="text" id="jwt-token" name="jwt_token" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Fetch Exam</button>
+                </form>
+                <div id="view-exam-message" class="message"></div>
+            </section>
 
-        <div id="loading" class="loading hidden">
-            <div class="spinner"></div>
-            <p>Fetching exam data...</p>
-        </div>
-
-        <div id="error" class="error hidden">
-            <h3>Error</h3>
-            <p id="errorMessage"></p>
-        </div>
-
-        <!-- Formatted exam display section -->
-        <div id="formattedExam" class="formatted-exam hidden">
-            <div class="exam-header">
-                <h2 id="examTitle">Exam Title</h2>
-                <div class="exam-meta">
-                    <span id="examSubject" class="meta-item"></span>
-                    <span id="examTopic" class="meta-item"></span>
-                    <span id="examDuration" class="meta-item"></span>
-                    <span id="examDifficulty" class="meta-item"></span>
+            <!-- Exam Display Section -->
+            <section id="exam-display-section" class="section" style="display: none;">
+                <div class="exam-header">
+                    <div class="exam-header-top">
+                        <h2 id="exam-title-display"></h2>
+                        <div class="pdf-link-container">
+                            <a id="pdf-source-link" href="#" target="_blank" rel="noopener noreferrer" class="pdf-link">
+                                📄 View Original PDF
+                            </a>
+                        </div>
+                    </div>
+                    <div class="exam-meta">
+                        <span id="exam-subject"></span>
+                        <span id="exam-topic"></span>
+                        <span id="exam-duration-display"></span>
+                        <span id="exam-difficulty"></span>
+                    </div>
                 </div>
-            </div>
 
-            <div class="questions-container" id="questionsContainer">
-                <!-- Questions will be dynamically inserted here -->
-            </div>
-        </div>
+                <div id="questions-container"></div>
+            </section>
+
+            <!-- Navigation -->
+            <nav class="nav-tabs">
+                <button class="nav-tab active" onclick="showSection('create-exam-section')">Create Exam</button>
+                <button class="nav-tab" onclick="showSection('view-exam-section')">View Exam</button>
+                <button class="nav-tab" onclick="logout()">Logout</button>
+            </nav>
+        </main>
     </div>
 
     <script src="script.js"></script>

@@ -1,86 +1,211 @@
-from typing import Optional, Dict, Any
+import logging
+from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime
 
-from .base_handler import BaseHandler
-from ...models import User
+from app.database import get_db
+from app.models.user import User
 
+logger = logging.getLogger(__name__)
 
-class UserHandler(BaseHandler):
-    """Handler for user-related operations."""
+async def create_user(
+    username: str,
+    email: str,
+    password: str,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    role: str = "user",
+    db: Session = None
+) -> Dict[str, Any]:
+    """Create a new user (admin only)."""
+    try:
+        if not db:
+            db = next(get_db())
 
-    def __init__(self, db: Session):
-        super().__init__(db)
+        # Check if username or email already exists
+        existing_user = db.query(User).filter(
+            (User.username == username) | (User.email == email)
+        ).first()
 
-    def get_user_profile(self, user: User) -> Dict[str, Any]:
-        """Get current user's profile information."""
-        try:
-            return {
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Username or email already exists")
+
+        # Hash password
+        password_hash = generate_password_hash(password)
+
+        # Create new user
+        user = User(
+            username=username,
+            email=email,
+            password_hash=password_hash,
+            first_name=first_name,
+            last_name=last_name,
+            role=role
+        )
+
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role,
+            "created_at": user.created_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create user: {str(e)}")
+        if db:
+            db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create user")
+
+async def get_users(db: Session = None) -> List[Dict[str, Any]]:
+    """Get all users (admin only)."""
+    try:
+        if not db:
+            db = next(get_db())
+
+        users = db.query(User).all()
+
+        return [
+            {
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "role": user.role.value,
-                "created_at": user.created_at.isoformat(),
-                "updated_at": user.updated_at.isoformat()
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "role": user.role,
+                "created_at": user.created_at.isoformat()
             }
-        except Exception as e:
-            self.handle_error(e, status_code=500, detail="Failed to get user profile")
+            for user in users
+        ]
+    except Exception as e:
+        logger.error(f"Failed to get users: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get users")
 
-    def update_user_profile(self, user: User, update_data: Dict[str, Any]) -> User:
-        """Update current user's profile information."""
-        try:
-            # Update allowed fields
-            allowed_fields = ["username", "email"]
-            for field, value in update_data.items():
-                if field in allowed_fields and value is not None:
-                    # Check if username or email already exists
-                    if field in ["username", "email"]:
-                        existing_user = self.db.query(User).filter(
-                            getattr(User, field) == value,
-                            User.id != user.id
-                        ).first()
-                        if existing_user:
-                            self.handle_error(
-                                Exception(f"{field.capitalize()} already exists"),
-                                status_code=400
-                            )
+async def get_user(user_id: int, db: Session = None) -> Dict[str, Any]:
+    """Get user by ID (admin only)."""
+    try:
+        if not db:
+            db = next(get_db())
 
-                    setattr(user, field, value)
+        user = db.query(User).filter(User.id == user_id).first()
 
-            user.updated_at = datetime.utcnow()
-            self.db.commit()
-            self.db.refresh(user)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-            return user
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to update user profile")
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role,
+            "created_at": user.created_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get user")
 
-    def change_password(self, user: User, current_password: str, new_password: str) -> Dict[str, str]:
-        """Change current user's password."""
-        try:
-            # Verify current password
-            if not check_password_hash(user.password_hash, current_password):
-                self.handle_error(Exception("Current password is incorrect"), status_code=400)
+async def update_user(
+    user_id: int,
+    username: Optional[str] = None,
+    email: Optional[str] = None,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    role: Optional[str] = None,
+    db: Session = None
+) -> Dict[str, Any]:
+    """Update user (admin only)."""
+    try:
+        if not db:
+            db = next(get_db())
 
-            # Validate new password
-            if len(new_password) < 8:
-                self.handle_error(Exception("New password must be at least 8 characters long"), status_code=400)
+        user = db.query(User).filter(User.id == user_id).first()
 
-            # Hash new password
-            new_password_hash = generate_password_hash(new_password)
-            user.password_hash = new_password_hash
-            user.updated_at = datetime.utcnow()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-            self.db.commit()
+        # Update fields if provided
+        if username is not None:
+            # Check if username already exists
+            existing_user = db.query(User).filter(
+                User.username == username,
+                User.id != user_id
+            ).first()
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Username already exists")
+            user.username = username
 
-            return {"message": "Password changed successfully"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to change password")
+        if email is not None:
+            # Check if email already exists
+            existing_user = db.query(User).filter(
+                User.email == email,
+                User.id != user_id
+            ).first()
+            if existing_user:
+                raise HTTPException(status_code=400, detail="Email already exists")
+            user.email = email
+
+        if first_name is not None:
+            user.first_name = first_name
+
+        if last_name is not None:
+            user.last_name = last_name
+
+        if role is not None:
+            user.role = role
+
+        user.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role,
+            "created_at": user.created_at.isoformat(),
+            "updated_at": user.updated_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update user {user_id}: {str(e)}")
+        if db:
+            db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update user")
+
+async def delete_user(user_id: int, db: Session = None) -> Dict[str, str]:
+    """Delete user (admin only)."""
+    try:
+        if not db:
+            db = next(get_db())
+
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        db.delete(user)
+        db.commit()
+
+        return {"message": "User deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete user {user_id}: {str(e)}")
+        if db:
+            db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete user")

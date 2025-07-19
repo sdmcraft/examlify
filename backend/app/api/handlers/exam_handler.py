@@ -1,258 +1,209 @@
-from typing import Optional, Dict, Any, List
-from sqlalchemy.orm import Session
-from fastapi import HTTPException, UploadFile
-import json
 import os
-import shutil
-import asyncio
-from datetime import datetime
+import json
+import logging
+from typing import Dict, Any, Optional
+from fastapi import HTTPException, Depends, UploadFile, File, Form
+from sqlalchemy.orm import Session
+from pydantic import BaseModel, HttpUrl
 
-from .base_handler import BaseHandler
-from ...models import Exam, User
-from ...services.pdf_processing import PDFProcessor
-from ...utils.file_utils import FileUtils
+from app.database import get_db
+from app.models.exam import Exam
+from app.models.user import User
+from app.services.pdf_processing import PDFProcessor
+from app.api.handlers.auth_handler import get_current_user
 
+logger = logging.getLogger(__name__)
 
-class ExamHandler(BaseHandler):
-    """Handler for exam-related operations."""
+# Lazy initialization of PDFProcessor
+_pdf_processor = None
 
-    def __init__(self, db: Session):
-        super().__init__(db)
-        self.upload_dir = os.getenv("UPLOAD_DIR", "uploads")
-        os.makedirs(self.upload_dir, exist_ok=True)
-        self._pdf_processor = None
-        self.file_utils = FileUtils()
+def get_pdf_processor():
+    global _pdf_processor
+    if _pdf_processor is None:
+        _pdf_processor = PDFProcessor()
+    return _pdf_processor
 
-    @property
-    def pdf_processor(self):
-        """Lazy initialization of PDF processor"""
-        if self._pdf_processor is None:
-            try:
-                # Check if Azure OpenAI credentials are available
-                import os
-                required_env_vars = [
-                    "AZURE_OPENAI_API_KEY",
-                    "AZURE_OPENAI_ENDPOINT",
-                    "AZURE_OPENAI_DEPLOYMENT_NAME"
-                ]
+class CreateExamRequest(BaseModel):
+    """Request model for creating an exam with PDF URL"""
+    title: str
+    description: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    pdf_url: HttpUrl  # URL to the PDF file
 
-                missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-                if missing_vars:
-                    raise Exception(f"Missing required environment variables: {', '.join(missing_vars)}")
+class ExamResponse(BaseModel):
+    """Response model for exam data"""
+    id: int
+    title: str
+    description: Optional[str]
+    duration_minutes: Optional[int]
+    created_by: int
+    created_at: str
+    status: str
+    processed_data: Optional[Dict[str, Any]] = None
 
-                self._pdf_processor = PDFProcessor()
-                print("PDF processor initialized successfully")  # Debug log
-            except Exception as e:
-                print(f"Failed to initialize PDF processor: {str(e)}")  # Debug log
-                raise
-        return self._pdf_processor
+async def create_exam_with_pdf_url(
+    request: CreateExamRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> ExamResponse:
+    """
+    Create a new exam and process PDF from URL
+    """
+    try:
+        logger.info(f"Creating exam with PDF URL: {request.pdf_url}")
 
-    def get_exams(self, user: User, status: Optional[str] = None) -> List[Exam]:
-        """Get list of exams available to the user."""
+        # Create exam record in database with initial status
+        exam = Exam(
+            title=request.title,
+            description=request.description,
+            duration_minutes=request.duration_minutes,
+            created_by=current_user.id,
+            status="draft"  # Initial status
+        )
+
+        db.add(exam)
+        db.commit()
+        db.refresh(exam)
+
+        logger.info(f"Created exam record with ID: {exam.id}")
+
+        # Update status to "uploaded" before processing
+        exam.status = "uploaded"
+        db.commit()
+
+        # Process PDF from URL
         try:
-            query = self.db.query(Exam)
-
-            # Filter by status if provided
-            if status:
-                # Note: Exam model doesn't have status field yet, this is for future implementation
-                pass
-
-            # For now, return all exams. In future, implement proper access control
-            if user.role != "admin":
-                # Regular users can see exams they created or public exams
-                query = query.filter(Exam.created_by == user.id)
-
-            return query.all()
-        except Exception as e:
-            self.handle_error(e, status_code=500, detail="Failed to fetch exams")
-
-    def get_exam(self, exam_id: int, user: User) -> Exam:
-        """Get specific exam details."""
-        try:
-            exam = self.validate_exists(Exam, exam_id, "Exam not found")
-
-            # Check access permissions
-            if user.role != "admin" and exam.created_by != user.id:
-                self.handle_error(Exception("Access denied"), status_code=403)
-
-            return exam
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.handle_error(e, status_code=500, detail="Failed to fetch exam")
-
-    async def create_exam(self, title: str, description: Optional[str], user: User, duration_minutes: Optional[int] = None, pdf_file: Optional[UploadFile] = None) -> Dict[str, Any]:
-        """Create a new exam with optional PDF processing."""
-        try:
-            # Create the exam first
-            exam = Exam(
-                title=title,
-                description=description,
-                duration_minutes=duration_minutes,
-                created_by=user.id
+            pdf_processor = get_pdf_processor()
+            processed_data = await pdf_processor.process_pdf_from_url(
+                str(request.pdf_url),
+                exam.id
             )
 
-            self.db.add(exam)
-            self.db.commit()
-            self.db.refresh(exam)
+            # Update exam with processed data and set status to "processed"
+            exam.questions_json = processed_data
+            exam.status = "processed"
+            db.commit()
 
-            # If PDF file is provided, process it
-            pdf_processing_result = None
-            if pdf_file:
-                try:
-                    print(f"Starting PDF processing for exam {exam.id}")  # Debug log
-                    pdf_processing_result = await self.upload_pdf(exam.id, pdf_file, user)
-                    print(f"PDF processing completed: {pdf_processing_result}")  # Debug log
-                except Exception as e:
-                    # If PDF processing fails, still return the exam but with error info
-                    import traceback
-                    error_details = f"{str(e)}\n{traceback.format_exc()}"
-                    print(f"PDF processing failed: {error_details}")  # Debug log
-                    pdf_processing_result = {
-                        "status": "failed",
-                        "error": error_details
-                    }
+            logger.info(f"Successfully processed PDF for exam {exam.id}")
 
-            # Convert exam to dict to ensure proper serialization
-            exam_dict = {
-                "id": exam.id,
-                "title": exam.title,
-                "description": exam.description,
-                "duration_minutes": exam.duration_minutes,
-                "pdf_filename": exam.pdf_filename,
-                "status": exam.status,
-                "created_by": exam.created_by,
-                "created_at": exam.created_at.isoformat() if exam.created_at else None,
-                "updated_at": exam.updated_at.isoformat() if exam.updated_at else None
-            }
+        except Exception as processing_error:
+            logger.error(f"PDF processing failed for exam {exam.id}: {str(processing_error)}")
+            # Update status to "processing_failed"
+            exam.status = "processing_failed"
+            db.commit()
+            # Don't fail the entire request, just log the error
+            # The exam record is still created but without processed data
 
-            return {
-                "exam": exam_dict,
-                "pdf_processing": pdf_processing_result
-            }
+        return ExamResponse(
+            id=exam.id,
+            title=exam.title,
+            description=exam.description,
+            duration_minutes=exam.duration_minutes,
+            created_by=exam.created_by,
+            created_at=exam.created_at.isoformat(),
+            status=exam.status,
+            processed_data=exam.questions_json
+        )
 
-        except Exception as e:
-            self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to create exam")
+    except Exception as e:
+        logger.error(f"Failed to create exam: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create exam: {str(e)}")
 
-    async def upload_pdf(self, exam_id: int, pdf_file: UploadFile, user: User) -> Dict[str, Any]:
-        """Upload and process PDF for an exam."""
-        temp_dir = None
-        temp_file_path = None
-        try:
-            exam = self.get_exam(exam_id, user)
+async def get_exam(
+    exam_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> ExamResponse:
+    """
+    Get exam by ID
+    """
+    try:
+        exam = db.query(Exam).filter(Exam.id == exam_id).first()
 
-            # Validate PDF file
-            self.file_utils.validate_pdf_file(pdf_file)
+        if not exam:
+            raise HTTPException(status_code=404, detail="Exam not found")
 
-            # Create temporary directory for processing
-            temp_dir = self.file_utils.create_temp_directory(f"exam_{exam_id}_")
+        # Check if user has access to this exam
+        if exam.created_by != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied")
 
-            # Save PDF file to temporary location for processing
-            filename = f"exam_{exam_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            temp_file_path = self.file_utils.save_to_temp(pdf_file, temp_dir, filename)
+        return ExamResponse(
+            id=exam.id,
+            title=exam.title,
+            description=exam.description,
+            duration_minutes=exam.duration_minutes,
+            created_by=exam.created_by,
+            created_at=exam.created_at.isoformat(),
+            status=exam.status,
+            processed_data=exam.questions_json
+        )
 
-            # Process PDF with LLM to extract questions
-            processed_exam = None
-            try:
-                processed_exam = await self.pdf_processor.process_pdf(temp_file_path, exam_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get exam {exam_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get exam: {str(e)}")
 
-                # If processing succeeds, save to permanent location
-                permanent_file_path = os.path.join(self.upload_dir, filename)
-                shutil.copy2(temp_file_path, permanent_file_path)
+async def get_exams(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> list[ExamResponse]:
+    """
+    Get all exams for the current user
+    """
+    try:
+        if current_user.role == "admin":
+            # Admin can see all exams
+            exams = db.query(Exam).all()
+        else:
+            # Regular users can only see their own exams
+            exams = db.query(Exam).filter(Exam.created_by == current_user.id).all()
 
-                # Update exam with PDF information
-                exam.pdf_filename = filename
-                exam.questions_json = processed_exam
-                exam.title = processed_exam.get("metadata", {}).get("title", exam.title)
+        return [
+            ExamResponse(
+                id=exam.id,
+                title=exam.title,
+                description=exam.description,
+                duration_minutes=exam.duration_minutes,
+                created_by=exam.created_by,
+                created_at=exam.created_at.isoformat(),
+                status=exam.status,
+                processed_data=exam.questions_json
+            )
+            for exam in exams
+        ]
 
-                # Update exam status
-                exam.status = "processed"
+    except Exception as e:
+        logger.error(f"Failed to get exams: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get exams: {str(e)}")
 
-            except Exception as processing_error:
-                # If processing fails, don't save to permanent location
-                exam.status = "processing_failed"
-                exam.questions_json = {
-                    "error": str(processing_error),
-                    "questions": [],
-                    "total_questions": 0,
-                    "processing_status": "failed"
-                }
+async def delete_exam(
+    exam_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete an exam
+    """
+    try:
+        exam = db.query(Exam).filter(Exam.id == exam_id).first()
 
-            self.db.commit()
-            self.db.refresh(exam)
+        if not exam:
+            raise HTTPException(status_code=404, detail="Exam not found")
 
-            result = {
-                "exam_id": exam.id,
-                "status": exam.status,
-                "message": "PDF uploaded and processed successfully." if exam.status == "processed" else "PDF uploaded but processing failed.",
-                "filename": filename if exam.status == "processed" else None,
-                "total_questions": processed_exam.get("metadata", {}).get("total_questions", 0) if processed_exam and exam.status == "processed" else 0
-            }
+        # Check if user has permission to delete this exam
+        if exam.created_by != current_user.id and current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="Access denied")
 
-            # Add processed data if processing was successful
-            if exam.status == "processed" and processed_exam:
-                result["processed_data"] = processed_exam
+        db.delete(exam)
+        db.commit()
 
-            return result
+        return {"message": "Exam deleted successfully"}
 
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to upload PDF")
-        finally:
-            # Clean up temporary directory and files
-            if temp_dir:
-                self.file_utils.cleanup_temp_directory(temp_dir)
-
-    def update_exam(self, exam_id: int, update_data: Dict[str, Any], user: User) -> Exam:
-        """Update exam metadata."""
-        try:
-            exam = self.get_exam(exam_id, user)
-
-            # Only admin or exam creator can update
-            if user.role != "admin" and exam.created_by != user.id:
-                self.handle_error(Exception("Access denied"), status_code=403)
-
-            # Update allowed fields
-            allowed_fields = ["title", "description"]
-            for field, value in update_data.items():
-                if field in allowed_fields and value is not None:
-                    setattr(exam, field, value)
-
-            exam.updated_at = datetime.utcnow()
-            self.db.commit()
-            self.db.refresh(exam)
-
-            return exam
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to update exam")
-
-    def delete_exam(self, exam_id: int, user: User) -> Dict[str, str]:
-        """Delete an exam."""
-        try:
-            exam = self.get_exam(exam_id, user)
-
-            # Only admin or exam creator can delete
-            if user.role != "admin" and exam.created_by != user.id:
-                self.handle_error(Exception("Access denied"), status_code=403)
-
-            # Delete associated PDF file if exists
-            if exam.pdf_filename:
-                file_path = os.path.join(self.upload_dir, exam.pdf_filename)
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-
-            self.db.delete(exam)
-            self.db.commit()
-
-            return {"message": "Exam deleted successfully"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.db.rollback()
-            self.handle_error(e, status_code=500, detail="Failed to delete exam")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete exam {exam_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete exam: {str(e)}")

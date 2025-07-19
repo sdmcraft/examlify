@@ -1,363 +1,140 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Body
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from typing import Optional, Dict, Any
-from pydantic import BaseModel
+from typing import List, Optional
 
-from ..database import get_db
-from ..models import User
-from .handlers import (
-    AuthHandler, ExamHandler, SessionHandler,
-    ResultHandler, UserHandler, AdminHandler
+from app.database import get_db
+from app.models.user import User
+from app.api.handlers.auth_handler import get_current_user, login, logout
+from app.api.handlers.exam_handler import (
+    create_exam_with_pdf_url,
+    get_exam,
+    get_exams,
+    delete_exam,
+    CreateExamRequest,
+    ExamResponse
 )
+from app.api.handlers.user_handler import create_user, get_users, get_user, update_user, delete_user
+from app.api.handlers.admin_handler import get_admin_stats
 
-# Security
-security = HTTPBearer()
-
-# Create router
-router = APIRouter(prefix="/api", tags=["API"])
-
-# Pydantic models for request/response
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-class AuthResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: Dict[str, Any]
-
-class SuccessResponse(BaseModel):
-    message: str
-
-class ErrorResponse(BaseModel):
-    detail: str
-
-class UpdateProfileRequest(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[str] = None
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
-
-class CreateUserRequest(BaseModel):
-    username: str
-    email: str
-    password: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    role: str = "user"
-
-class UpdateUserRequest(BaseModel):
-    username: Optional[str] = None
-    email: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    role: Optional[str] = None
-    status: Optional[str] = None
-
-class CreateExamRequest(BaseModel):
-    title: str
-    description: Optional[str] = None
-
-class SubmitExamRequest(BaseModel):
-    session_id: str
-    answers: Dict[str, str]
-
-class StartSessionRequest(BaseModel):
-    duration_minutes: Optional[int] = None
-
-# Dependency to get current user
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
-    """Get current authenticated user."""
-    auth_handler = AuthHandler(db)
-    return auth_handler.get_current_user(credentials.credentials)
+router = APIRouter(prefix="/api")
 
 # Authentication routes
-@router.post("/auth/login", response_model=AuthResponse)
-async def login(
-    login_data: LoginRequest,
-    db: Session = Depends(get_db)
-):
-    """User login endpoint."""
-    auth_handler = AuthHandler(db)
-    return auth_handler.login(login_data.username, login_data.password)
+@router.post("/auth/login")
+async def login_endpoint(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    return await login(username, password, db)
 
-@router.post("/auth/logout", response_model=SuccessResponse)
-async def logout(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """User logout endpoint."""
-    auth_handler = AuthHandler(db)
-    return auth_handler.logout("")  # Token is handled by dependency
-
-@router.get("/auth/status")
-async def check_auth_status(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Check authentication status."""
-    auth_handler = AuthHandler(db)
-    return auth_handler.check_auth_status("")  # Token is handled by dependency
+@router.post("/auth/logout")
+async def logout_endpoint(current_user: User = Depends(get_current_user)):
+    return await logout()
 
 # Exam routes
-@router.get("/exams")
-async def get_exams(
-    status: Optional[str] = Query(None),
+@router.post("/exams", response_model=ExamResponse)
+async def create_exam_endpoint(
+    request: CreateExamRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get list of available exams."""
-    exam_handler = ExamHandler(db)
-    return exam_handler.get_exams(current_user, status)
+    """Create a new exam with PDF URL"""
+    return await create_exam_with_pdf_url(request, current_user, db)
 
-@router.post("/exams")
-async def create_exam(
-    title: str = Form(...),
-    description: Optional[str] = Form(None),
-    duration_minutes: Optional[int] = Form(None),
-    pdf_file: Optional[UploadFile] = File(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Create a new exam with optional PDF upload."""
-    exam_handler = ExamHandler(db)
-    return await exam_handler.create_exam(title, description, current_user, duration_minutes, pdf_file)
-
-@router.get("/exams/{exam_id}")
-async def get_exam(
+@router.get("/exams/{exam_id}", response_model=ExamResponse)
+async def get_exam_endpoint(
     exam_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get specific exam details."""
-    exam_handler = ExamHandler(db)
-    exam = exam_handler.get_exam(exam_id, current_user)
+    """Get exam by ID"""
+    return await get_exam(exam_id, current_user, db)
 
-    # Convert to dict with full details including processed JSON
-    exam_dict = {
-        "id": exam.id,
-        "title": exam.title,
-        "description": exam.description,
-        "duration_minutes": exam.duration_minutes,
-        "pdf_filename": exam.pdf_filename,
-        "status": exam.status,
-        "created_by": exam.created_by,
-        "created_at": exam.created_at.isoformat() if exam.created_at else None,
-        "updated_at": exam.updated_at.isoformat() if exam.updated_at else None,
-        "questions_json": exam.questions_json,  # Full processed JSON data
-        "pdf_content": exam.pdf_content  # Any additional PDF metadata
-    }
-
-    return exam_dict
-
-@router.put("/exams/{exam_id}")
-async def update_exam(
-    exam_id: int,
-    update_data: Dict[str, Any] = Body(...),
+@router.get("/exams", response_model=List[ExamResponse])
+async def get_exams_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update exam metadata."""
-    exam_handler = ExamHandler(db)
-    return exam_handler.update_exam(exam_id, update_data, current_user)
+    """Get all exams for the current user"""
+    return await get_exams(current_user, db)
 
 @router.delete("/exams/{exam_id}")
-async def delete_exam(
+async def delete_exam_endpoint(
     exam_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delete an exam."""
-    exam_handler = ExamHandler(db)
-    return exam_handler.delete_exam(exam_id, current_user)
+    """Delete an exam"""
+    return await delete_exam(exam_id, current_user, db)
 
-@router.get("/exams/{exam_id}/questions")
-async def get_exam_questions(
-    exam_id: int,
+# User management routes (admin only)
+@router.post("/users")
+async def create_user_endpoint(
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    role: str = Form("user"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get processed questions and metadata from an exam."""
-    exam_handler = ExamHandler(db)
-    exam = exam_handler.get_exam(exam_id, current_user)
+    """Create a new user (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await create_user(username, email, password, first_name, last_name, role, db)
 
-    if not exam.questions_json:
-        raise HTTPException(status_code=404, detail="No processed questions found for this exam")
-
-    return {
-        "exam_id": exam.id,
-        "exam_title": exam.title,
-        "status": exam.status,
-        "processed_data": exam.questions_json
-    }
-
-# Exam session routes
-@router.post("/exams/{exam_id}/start")
-async def start_exam_session(
-    exam_id: int,
-    session_data: StartSessionRequest = Body(...),
+@router.get("/users")
+async def get_users_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Start a new exam attempt session."""
-    session_handler = SessionHandler(db)
-    return session_handler.start_exam_session(exam_id, current_user, session_data.duration_minutes)
+    """Get all users (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await get_users(db)
 
-@router.post("/sessions/{session_id}/hint/{question_id}")
-async def get_hint(
-    session_id: int,
-    question_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get hint for a specific question."""
-    session_handler = SessionHandler(db)
-    return session_handler.get_hint(session_id, question_id, current_user)
-
-@router.post("/sessions/{session_id}/solution/{question_id}")
-async def get_solution(
-    session_id: int,
-    question_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get detailed solution for a specific question."""
-    session_handler = SessionHandler(db)
-    return session_handler.get_solution(session_id, question_id, current_user)
-
-@router.post("/exams/{exam_id}/submit")
-async def submit_exam(
-    exam_id: int,
-    submit_data: SubmitExamRequest = Body(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Submit completed exam."""
-    session_handler = SessionHandler(db)
-    return session_handler.submit_exam(exam_id, int(submit_data.session_id), submit_data.answers, current_user)
-
-# Results routes
-@router.get("/results/{attempt_id}")
-async def get_detailed_results(
-    attempt_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get detailed exam results."""
-    result_handler = ResultHandler(db)
-    return result_handler.get_detailed_results(attempt_id, current_user)
-
-@router.get("/results/history")
-async def get_exam_history(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get user's exam attempt history."""
-    result_handler = ResultHandler(db)
-    return result_handler.get_exam_history(current_user)
-
-@router.get("/results/summary")
-async def get_performance_summary(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get overall performance analytics."""
-    result_handler = ResultHandler(db)
-    return result_handler.get_performance_summary(current_user)
-
-# User routes
-@router.get("/users/profile")
-async def get_user_profile(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Get current user's profile."""
-    user_handler = UserHandler(db)
-    return user_handler.get_user_profile(current_user)
-
-@router.put("/users/profile")
-async def update_user_profile(
-    profile_data: UpdateProfileRequest = Body(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Update current user's profile."""
-    user_handler = UserHandler(db)
-    return user_handler.update_user_profile(current_user, profile_data.dict(exclude_unset=True))
-
-@router.put("/users/password")
-async def change_password(
-    password_data: ChangePasswordRequest = Body(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Change current user's password."""
-    user_handler = UserHandler(db)
-    return user_handler.change_password(current_user, password_data.current_password, password_data.new_password)
-
-@router.get("/users/{user_id}/history")
-async def get_user_exam_history(
+@router.get("/users/{user_id}")
+async def get_user_endpoint(
     user_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get exam history for a specific user (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.get_user_exam_history(user_id, current_user)
+    """Get user by ID (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await get_user(user_id, db)
+
+@router.put("/users/{user_id}")
+async def update_user_endpoint(
+    user_id: int,
+    username: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    role: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await update_user(user_id, username, email, first_name, last_name, role, db)
+
+@router.delete("/users/{user_id}")
+async def delete_user_endpoint(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete user (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await delete_user(user_id, db)
 
 # Admin routes
-@router.get("/admin/users")
-async def get_all_users(
-    role: Optional[str] = Query(None),
+@router.get("/admin/stats")
+async def admin_stats_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get list of all users (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.get_all_users(current_user, role)
-
-@router.post("/admin/users")
-async def create_user(
-    user_data: CreateUserRequest = Body(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Create a new user (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.create_user(
-        user_data.username,
-        user_data.email,
-        user_data.password,
-        current_user,
-        user_data.first_name,
-        user_data.last_name,
-        user_data.role
-    )
-
-@router.put("/admin/users/{user_id}")
-async def update_user(
-    user_id: int,
-    user_data: UpdateUserRequest = Body(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Update user information (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.update_user(user_id, user_data.dict(exclude_unset=True), current_user)
-
-@router.delete("/admin/users/{user_id}")
-async def delete_user(
-    user_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Delete a user (admin only)."""
-    admin_handler = AdminHandler(db)
-    return admin_handler.delete_user(user_id, current_user)
+    """Get admin statistics (admin only)"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return await get_admin_stats(db)

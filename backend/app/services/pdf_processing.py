@@ -2,6 +2,8 @@ import os
 import base64
 import json
 import logging
+import tempfile
+import requests
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import asyncio
@@ -22,15 +24,7 @@ class ExamMetadata(BaseModel):
     total_questions: Optional[int] = None
     duration_minutes: Optional[int] = None
     difficulty_level: Optional[str] = None
-
-class Diagram(BaseModel):
-    """Model for extracted diagrams"""
-    id: str
-    base64_image: str
-    description: str
-    page_number: int
-    position: Dict[str, int]  # x, y coordinates
-    question_number: Optional[str] = None  # Question number this diagram belongs to
+    pdf_url: Optional[str] = None  # URL of the source PDF
 
 class Question(BaseModel):
     """Model for extracted questions"""
@@ -41,15 +35,12 @@ class Question(BaseModel):
     hint: Optional[str] = None
     explanation: Optional[str] = None
     confidence: Optional[str] = None  # HIGH, MEDIUM, LOW, UNSURE
-    diagram_ids: List[str] = []
     page_number: int
     question_number: Optional[str] = None  # Question number (e.g., "1", "2", "3")
-    diagrams: List[Dict[str, Any]] = []  # List of diagram objects attached to this question
 
 class ProcessedExam(BaseModel):
     """Final processed exam structure"""
     metadata: ExamMetadata
-    diagrams: List[Diagram]
     questions: List[Question]
 
 class PDFProcessor:
@@ -71,31 +62,32 @@ class PDFProcessor:
         self.supported_formats = os.getenv("SUPPORTED_IMAGE_FORMATS", "png,jpg,jpeg").split(",")
         self.timeout = int(os.getenv("PROCESSING_TIMEOUT_SECONDS", 300))
 
-    async def process_pdf(self, pdf_path: str, exam_id: int) -> Dict[str, Any]:
+    async def process_pdf_from_url(self, pdf_url: str, exam_id: int) -> Dict[str, Any]:
         """
-        Main processing pipeline for converting PDF to structured exam
+        Main processing pipeline for converting PDF from URL to structured exam
 
         Args:
-            pdf_path: Path to the PDF file
+            pdf_url: URL of the PDF file
             exam_id: ID of the exam in database
 
         Returns:
             Dict containing the processed exam data
         """
+        temp_file = None
         try:
-            logger.info(f"Starting PDF processing for exam {exam_id}")
+            logger.info(f"Starting PDF processing for exam {exam_id} from URL: {pdf_url}")
 
-            # Step 0: Rasterize PDF to images
-            logger.info("Step 0: Rasterizing PDF to images")
-            images = await self._rasterize_pdf(pdf_path)
+            # Step 0: Download PDF to temp file
+            logger.info("Step 0: Downloading PDF from URL")
+            temp_file = await self._download_pdf(pdf_url)
 
-            # Step 1: Extract metadata
-            logger.info("Step 1: Extracting metadata")
-            metadata = await self._extract_metadata(images)
+            # Step 1: Rasterize PDF to images
+            logger.info("Step 1: Rasterizing PDF to images")
+            images = await self._rasterize_pdf(temp_file)
 
-            # Step 2: Extract diagrams
-            logger.info("Step 2: Extracting diagrams")
-            diagrams = await self._extract_diagrams(images)
+            # Step 2: Extract metadata (including PDF URL)
+            logger.info("Step 2: Extracting metadata")
+            metadata = await self._extract_metadata(images, pdf_url)
 
             # Step 3: Extract questions
             logger.info("Step 3: Extracting questions")
@@ -103,7 +95,7 @@ class PDFProcessor:
 
             # Step 4: Structure data
             logger.info("Step 4: Structuring data")
-            structured_data = self._structure_data(metadata, diagrams, questions)
+            structured_data = self._structure_data(metadata, questions)
 
             # Step 5: Generate answers and hints
             logger.info("Step 5: Generating answers and hints")
@@ -115,10 +107,62 @@ class PDFProcessor:
         except Exception as e:
             logger.error(f"Processing failed for exam {exam_id}: {str(e)}")
             raise
+        finally:
+            # Clean up temp file
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    logger.info(f"Cleaned up temp file: {temp_file}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up temp file {temp_file}: {str(cleanup_error)}")
+
+    async def _download_pdf(self, pdf_url: str) -> str:
+        """
+        Download PDF from URL to a temporary file
+
+        Args:
+            pdf_url: URL of the PDF file
+
+        Returns:
+            Path to the temporary PDF file
+        """
+        try:
+            logger.info(f"Downloading PDF from: {pdf_url}")
+
+            # Create a temporary file with .pdf extension
+            temp_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+            temp_path = temp_file.name
+            temp_file.close()
+
+            # Download the PDF
+            response = await asyncio.to_thread(
+                requests.get,
+                pdf_url,
+                timeout=30,
+                stream=True
+            )
+            response.raise_for_status()
+
+            # Check file size
+            content_length = response.headers.get('content-length')
+            if content_length and int(content_length) > self.max_file_size:
+                raise ValueError(f"PDF file size ({int(content_length)} bytes) exceeds maximum allowed size ({self.max_file_size} bytes)")
+
+            # Save to temp file
+            with open(temp_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            logger.info(f"PDF downloaded successfully to: {temp_path}")
+            return temp_path
+
+        except Exception as e:
+            logger.error(f"Failed to download PDF from {pdf_url}: {str(e)}")
+            raise
 
     async def _rasterize_pdf(self, pdf_path: str) -> List[str]:
         """
-        Step 0: Convert PDF pages to base64 encoded images
+        Step 1: Convert PDF pages to base64 encoded images
 
         Args:
             pdf_path: Path to the PDF file
@@ -151,12 +195,13 @@ class PDFProcessor:
             logger.error(f"Failed to rasterize PDF: {str(e)}")
             raise
 
-    async def _extract_metadata(self, images: List[str]) -> ExamMetadata:
+    async def _extract_metadata(self, images: List[str], pdf_url: str) -> ExamMetadata:
         """
-        Step 1: Extract exam metadata using LLM vision with function calling
+        Step 2: Extract exam metadata using LLM vision with function calling
 
         Args:
             images: List of base64 encoded images
+            pdf_url: URL of the source PDF
 
         Returns:
             ExamMetadata object with extracted information
@@ -242,129 +287,15 @@ class PDFProcessor:
             function_call = response.choices[0].message.function_call
             metadata_json = json.loads(function_call.arguments)
 
+            # Add PDF URL to metadata
+            metadata_json['pdf_url'] = pdf_url
+
             return ExamMetadata(**metadata_json)
 
         except Exception as e:
             logger.error(f"Failed to extract metadata: {str(e)}")
-            # Return default metadata
-            return ExamMetadata(title="Untitled Exam")
-
-    async def _extract_diagrams(self, images: List[str]) -> List[Diagram]:
-        """
-        Step 2: Extract diagrams from images using LLM vision with function calling
-
-        Args:
-            images: List of base64 encoded images
-
-        Returns:
-            List of Diagram objects
-        """
-        try:
-            diagrams = []
-
-            # Function definition for diagram extraction
-            functions = [
-                {
-                    "name": "extract_diagrams",
-                    "description": "Extract diagrams and images from exam pages",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "diagrams": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "id": {
-                                            "type": "string",
-                                            "description": "Unique diagram ID"
-                                        },
-                                        "description": {
-                                            "type": "string",
-                                            "description": "Description of what the diagram shows"
-                                        },
-                                        "position": {
-                                            "type": "object",
-                                            "properties": {
-                                                "x": {"type": "integer", "description": "X coordinate as percentage"},
-                                                "y": {"type": "integer", "description": "Y coordinate as percentage"}
-                                            },
-                                            "description": "Approximate position on the page"
-                                        },
-                                        "question_number": {
-                                            "type": "string",
-                                            "description": "Question number this diagram belongs to"
-                                        }
-                                    },
-                                    "required": ["id", "description", "position"]
-                                }
-                            }
-                        },
-                        "required": ["diagrams"]
-                    }
-                }
-            ]
-
-            for page_num, image in enumerate(images):
-                prompt = f"""
-                Analyze this exam page (page {page_num + 1}) and identify any diagrams, charts, graphs, or images that are relevant to the questions.
-
-                For each diagram found, provide:
-                1. A unique ID (diagram_{page_num + 1}_1, diagram_{page_num + 1}_2, etc.)
-                2. A description of what the diagram shows
-                3. The approximate position (x, y coordinates as percentages)
-                4. The question number this diagram belongs to (if visible or can be inferred)
-
-                Look for:
-                - Question numbers near the diagram (e.g., "Q1", "Question 1", "1.")
-                - Text that references the diagram (e.g., "Refer to the diagram above")
-                - Spatial proximity to question text
-
-                If no diagrams are found, return an empty diagrams array.
-                If the question number cannot be determined, use null for question_number.
-                """
-
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image}"}}
-                        ]
-                    }
-                ]
-
-                response = await asyncio.to_thread(
-                    self.client.chat.completions.create,
-                    model=self.vision_deployment,
-                    messages=messages,
-                    functions=functions,
-                    function_call={"name": "extract_diagrams"},
-                    max_tokens=16000,
-                    temperature=0.1
-                )
-
-                # Extract function call arguments
-                function_call = response.choices[0].message.function_call
-                page_diagrams = json.loads(function_call.arguments)
-
-                # Add page number and base64 image to each diagram
-                for diagram_data in page_diagrams.get("diagrams", []):
-                    diagram = Diagram(
-                        id=diagram_data["id"],
-                        base64_image=image,  # Store the full page image
-                        description=diagram_data["description"],
-                        page_number=page_num + 1,
-                        position=diagram_data.get("position", {"x": 0, "y": 0}),
-                        question_number=diagram_data.get("question_number")
-                    )
-                    diagrams.append(diagram)
-
-            return diagrams
-
-        except Exception as e:
-            logger.error(f"Failed to extract diagrams: {str(e)}")
-            return []
+            # Return default metadata with PDF URL
+            return ExamMetadata(title="Untitled Exam", pdf_url=pdf_url)
 
     async def _extract_questions(self, images: List[str]) -> List[Question]:
         """
@@ -408,11 +339,6 @@ class PDFProcessor:
                                             "type": "array",
                                             "items": {"type": "string"},
                                             "description": "Multiple choice options (A, B, C, D, etc.)"
-                                        },
-                                        "diagram_ids": {
-                                            "type": "array",
-                                            "items": {"type": "string"},
-                                            "description": "IDs of diagrams referenced by this question"
                                         }
                                     },
                                     "required": ["id", "question_text", "options"]
@@ -433,7 +359,6 @@ class PDFProcessor:
                 2. The question number (e.g., "1", "2", "3", "Q1", "Question 1")
                 3. The question text
                 4. All multiple choice options (A, B, C, D, etc.)
-                5. Any diagram IDs that are referenced (if applicable)
 
                 Look for question numbers in formats like:
                 - "1.", "2.", "3."
@@ -475,7 +400,6 @@ class PDFProcessor:
                         id=question_data["id"],
                         question_text=question_data["question_text"],
                         options=question_data["options"],
-                        diagram_ids=question_data.get("diagram_ids", []),
                         page_number=page_num + 1,
                         question_number=question_data.get("question_number")
                     )
@@ -487,13 +411,12 @@ class PDFProcessor:
             logger.error(f"Failed to extract questions: {str(e)}")
             return []
 
-    def _structure_data(self, metadata: ExamMetadata, diagrams: List[Diagram], questions: List[Question]) -> ProcessedExam:
+    def _structure_data(self, metadata: ExamMetadata, questions: List[Question]) -> ProcessedExam:
         """
         Step 4: Structure the extracted data into a coherent exam format
 
         Args:
             metadata: Extracted exam metadata
-            diagrams: List of extracted diagrams
             questions: List of extracted questions
 
         Returns:
@@ -503,33 +426,9 @@ class PDFProcessor:
             # Update metadata with actual question count
             metadata.total_questions = len(questions)
 
-            # Link diagrams to questions based on question numbers
-            updated_questions = []
-            for question in questions:
-                # Find diagrams that belong to this question
-                question_diagrams = []
-                for diagram in diagrams:
-                    if (diagram.question_number and question.question_number and
-                        diagram.question_number == question.question_number):
-                        # Add diagram as a child object to the question
-                        question_diagrams.append({
-                            "id": diagram.id,
-                            "description": diagram.description,
-                            "page_number": diagram.page_number,
-                            "position": diagram.position,
-                            "base64_image": diagram.base64_image
-                        })
-
-                # Create updated question with attached diagrams
-                question_dict = question.dict()
-                question_dict['diagrams'] = question_diagrams
-                updated_question = Question(**question_dict)
-                updated_questions.append(updated_question)
-
             return ProcessedExam(
                 metadata=metadata,
-                diagrams=diagrams,
-                questions=updated_questions
+                questions=questions
             )
 
         except Exception as e:
@@ -711,7 +610,6 @@ class PDFProcessor:
             # Create updated processed exam
             return ProcessedExam(
                 metadata=processed_exam.metadata,
-                diagrams=processed_exam.diagrams,
                 questions=updated_questions
             )
 

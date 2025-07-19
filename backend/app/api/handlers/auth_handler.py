@@ -2,116 +2,107 @@ import logging
 import traceback
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends, Header
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime, timedelta
 import jwt
 import os
 
-from .base_handler import BaseHandler
-from ...models import User
+from app.database import get_db
+from app.models.user import User
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# JWT configuration
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 365 * 24 * 60))  # 365 days default
 
-class AuthHandler(BaseHandler):
-    """Handler for authentication-related operations."""
+async def login(username: str, password: str, db: Session) -> Dict[str, Any]:
+    """Authenticate user and return access token."""
+    try:
+        # Find user by username or email
+        user = db.query(User).filter(
+            (User.username == username) | (User.email == username)
+        ).first()
 
-    def __init__(self, db: Session):
-        super().__init__(db)
-        self.secret_key = os.getenv("JWT_SECRET_KEY", "your-secret-key")
-        self.algorithm = "HS256"
-        self.access_token_expire_minutes = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 365 * 24 * 60))  # 365 days default
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    def login(self, username: str, password: str) -> Dict[str, Any]:
-        """Authenticate user and return access token."""
-        try:
-            # Find user by username or email
-            user = self.db.query(User).filter(
-                (User.username == username) | (User.email == username)
-            ).first()
+        if not check_password_hash(user.password_hash, password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
 
-            if not user:
-                self.handle_error(Exception("Invalid credentials"), status_code=401)
+        # Generate access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = _create_access_token(
+            data={"sub": str(user.id), "username": user.username, "role": user.role},
+            expires_delta=access_token_expires
+        )
 
-            if not check_password_hash(user.password_hash, password):
-                self.handle_error(Exception("Invalid credentials"), status_code=401)
-
-            # Generate access token
-            access_token_expires = timedelta(minutes=self.access_token_expire_minutes)
-            access_token = self._create_access_token(
-                data={"sub": str(user.id), "username": user.username, "role": user.role},
-                expires_delta=access_token_expires
-            )
-
-            return {
-                "access_token": access_token,
-                "token_type": "bearer",
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "role": user.role
-                }
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role
             }
-        except HTTPException:
-            raise
-        except Exception as e:
-            self.handle_error(e, status_code=500, detail="Login failed")
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Login failed")
 
-    def logout(self, token: str) -> Dict[str, str]:
-        """Logout user by invalidating token (in a real app, you'd add to blacklist)."""
-        try:
-            # In a production app, you would add the token to a blacklist
-            # For now, we'll just return success
-            return {"message": "Successfully logged out"}
-        except Exception as e:
-            self.handle_error(e, status_code=500, detail="Logout failed")
+async def logout() -> Dict[str, str]:
+    """Logout user by invalidating token (in a real app, you'd add to blacklist)."""
+    try:
+        # In a production app, you would add the token to a blacklist
+        # For now, we'll just return success
+        return {"message": "Successfully logged out"}
+    except Exception as e:
+        logger.error(f"Logout failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Logout failed")
 
-    def get_current_user(self, token: str) -> User:
-        """Get current user from token."""
-        try:
-            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-            user_id: str = payload.get("sub")
-            if user_id is None:
-                self.handle_error(Exception("Invalid token"), status_code=401)
+def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> User:
+    """Get current user from token."""
+    try:
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Authorization header required")
 
-            user = self.db.query(User).filter(User.id == int(user_id)).first()
-            if user is None:
-                self.handle_error(Exception("User not found"), status_code=401)
+        # Extract token from "Bearer <token>"
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Invalid authorization header format")
 
-            return user
-        except jwt.ExpiredSignatureError:
-            self.handle_error(Exception("Token has expired"), status_code=401)
-        except jwt.PyJWTError:
-            self.handle_error(Exception("Invalid token"), status_code=401)
-        except Exception as e:
-            self.handle_error(e, status_code=500, detail="Authentication failed")
+        token = authorization.replace("Bearer ", "")
 
-    def check_auth_status(self, token: str) -> Dict[str, Any]:
-        """Check if current session is valid."""
-        try:
-            user = self.get_current_user(token)
-            return {
-                "authenticated": True,
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "email": user.email,
-                    "role": user.role
-                }
-            }
-        except HTTPException:
-            return {"authenticated": False, "user": None}
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
 
-    def _create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
-        """Create JWT access token."""
-        to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.utcnow() + expires_delta
-        else:
-            expire = datetime.utcnow() + timedelta(minutes=15)
-        to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
-        return encoded_jwt
+        user = db.query(User).filter(User.id == int(user_id)).first()
+        if user is None:
+            raise HTTPException(status_code=401, detail="User not found")
+
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        logger.error(f"Authentication failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication failed")
+
+def _create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create JWT access token."""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
